@@ -1,0 +1,9 @@
+bin/
+*.exe
+*.wasm
+fsbox_settings.json
+fsbox_save.json
+preview.png
+tmp_spawn.png
+rsrc.syso
+Mods/*.wasm
