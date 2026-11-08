@@ -1,0 +1,30 @@
+{
+  "id": "example.mod",
+  "name": "Example Sandbox Mod",
+  "version": "1.0.0",
+  "author": "Developer",
+  "description": "Example mod demonstrating the FSBOX modding API",
+  "runtime": "wasm",
+  "entry": "example.wasm",
+  "api_version": "1.0.0",
+  "game_version": ">=1.0.0",
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "entity.create",
+    "entity.remove",
+    "entity.modify",
+    "physics.modify",
+    "physics.read",
+    "player.modify",
+    "game.modify",
+    "engine.hooks",
+    "ui.register",
+    "toast"
+  ],
+  "capabilities": [
+    "custom_entities",
+    "custom_tools"
+  ]
+}

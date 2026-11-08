@@ -377,7 +377,7 @@ func newPhysicsWorld() box3d.WorldID {
 	wd := box3d.DefaultWorldDef()
 	wd.Gravity = box3d.Vec3{Y: -20}
 	wd.EnableSleep = true
-	wd.EnableContinuous = true
+	wd.EnableContinuous = false
 	return box3d.CreateWorld(&wd)
 }
 

@@ -1,0 +1,26 @@
+{
+  "id": "go.example.mod",
+  "name": "Go Example Mod",
+  "version": "1.0.0",
+  "author": "Developer",
+  "description": "Example native Go mod running in an isolated worker process",
+  "runtime": "go",
+  "entry": "main.go",
+  "api_version": "1.0.0",
+  "game_version": ">=1.0.0",
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "entity.create",
+    "entity.modify",
+    "physics.modify",
+    "player.modify",
+    "game.modify",
+    "engine.hooks"
+  ],
+  "capabilities": [
+    "custom_entities",
+    "custom_tools"
+  ]
+}

@@ -544,7 +544,7 @@ func (g *Game) tick(dt float32) {
 	if g.held != nil {
 		g.updateHeld(dt)
 	}
-	g.world.Step(dt, 4)
+	g.world.Step(dt, 2)
 	g.enforceBounds()
 
 	p := g.player.body.GetPosition()

@@ -7,3 +7,4 @@ preview.png
 tmp_spawn.png
 rsrc.syso
 Mods/*.wasm
+ModsGo/*/bin/worker.exe

@@ -388,7 +388,7 @@ func (g *Game) drawAimHighlight() {
 }
 
 func (g *Game) initShadows() {
-	g.shadowMap = rl.LoadRenderTexture(2048, 2048)
+	g.shadowMap = rl.LoadRenderTexture(1024, 1024)
 	g.sunCam = rl.Camera3D{
 		Position:   rlv(0, 40, 0),
 		Target:     rlv(0, 0, 0),
@@ -440,14 +440,8 @@ void main() {
     float shadow = 0.0;
     if (shadowEnabled == 1 && projCoords.x >= 0.0 && projCoords.x <= 1.0 && projCoords.y >= 0.0 && projCoords.y <= 1.0 && projCoords.z <= 1.0) {
         float bias = 0.005;
-        float texelSize = 1.0 / 2048.0;
-        for (int x = -1; x <= 1; x++) {
-            for (int y = -1; y <= 1; y++) {
-                float pcfDepth = texture(shadowMap, projCoords.xy + vec2(float(x), float(y)) * texelSize).r;
-                shadow += (projCoords.z - bias > pcfDepth) ? 1.0 : 0.0;
-            }
-        }
-        shadow /= 9.0;
+        float closestDepth = texture(shadowMap, projCoords.xy).r;
+        shadow = (projCoords.z - bias > closestDepth) ? 1.0 : 0.0;
     }
     vec3 n = fragNormal;
     if (length(n) < 0.1) n = vec3(0.0, 1.0, 0.0);

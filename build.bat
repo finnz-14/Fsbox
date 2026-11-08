@@ -3,7 +3,7 @@ setlocal
 
 cd /d "%~dp0"
 
-echo Building example mod...
+echo Building WASM mod...
 pushd examplemod
 set GOOS=wasip1
 set GOARCH=wasm
@@ -16,6 +16,16 @@ if errorlevel 1 (
 popd
 set GOOS=
 set GOARCH=
+
+echo Building Go mod worker...
+pushd ModsGo\example
+go build -o bin\worker.exe .
+if errorlevel 1 (
+    echo Go mod worker build failed
+    popd
+    exit /b 1
+)
+popd
 
 echo Building game...
 go build -o bin\fsbox.exe .
