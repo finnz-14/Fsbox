@@ -701,11 +701,11 @@ func (g *Game) drawBillboards() {
 		hw := b.Width / 2
 		hh := b.Height / 2
 
-		// Draw panel quad - both sides so it's visible from any angle
-		bl := rlv(b.Pos.X+right.X*(-hw)+up.X*(-hh), b.Pos.Y+right.Y*(-hw)+up.Y*(-hh), b.Pos.Z+right.Z*(-hw)+up.Z*(-hh))
-		br := rlv(b.Pos.X+right.X*(hw)+up.X*(-hh), b.Pos.Y+right.Y*(hw)+up.Y*(-hh), b.Pos.Z+right.Z*(hw)+up.Z*(-hh))
-		tr := rlv(b.Pos.X+right.X*(hw)+up.X*(hh), b.Pos.Y+right.Y*(hw)+up.Y*(hh), b.Pos.Z+right.Z*(hw)+up.Z*(hh))
-		tl := rlv(b.Pos.X+right.X*(-hw)+up.X*(hh), b.Pos.Y+right.Y*(-hw)+up.Y*(hh), b.Pos.Z+right.Z*(-hw)+up.Z*(hh))
+		// Draw panel quad - corners relative to panel center
+		tl := rlv(b.Pos.X+right.X*(-hw)+up.X*(-hh), b.Pos.Y+right.Y*(-hw)+up.Y*(-hh), b.Pos.Z+right.Z*(-hw)+up.Z*(-hh))
+		tr := rlv(b.Pos.X+right.X*(hw)+up.X*(-hh), b.Pos.Y+right.Y*(hw)+up.Y*(-hh), b.Pos.Z+right.Z*(hw)+up.Z*(-hh))
+		br := rlv(b.Pos.X+right.X*(hw)+up.X*(hh), b.Pos.Y+right.Y*(hw)+up.Y*(hh), b.Pos.Z+right.Z*(hw)+up.Z*(hh))
+		bl := rlv(b.Pos.X+right.X*(-hw)+up.X*(hh), b.Pos.Y+right.Y*(-hw)+up.Y*(hh), b.Pos.Z+right.Z*(-hw)+up.Z*(hh))
 
 		bg := rgba(24, 26, 30, 220)
 		border := colBorderHi
@@ -747,23 +747,18 @@ func (g *Game) drawBillboards() {
 
 				if el.Label != "" {
 					screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
-					// GetWorldToScreen may return Y from bottom; flip to top-origin for drawText
-					screenPos.Y = float32(rl.GetScreenHeight()) - screenPos.Y
-					tw := g.textWidth(el.Label, el.TextSize)
-					th := el.TextSize
-					g.drawText(el.Label, screenPos.X-tw/2, screenPos.Y-th/2, el.TextSize, el.TextColor)
+					tw := g.textWidth(el.Label, 20)
+					g.drawText(el.Label, screenPos.X-tw/2, screenPos.Y-10, 20, el.TextColor)
 				}
 			} else if el.Kind == "text" {
 				screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
-				screenPos.Y = float32(rl.GetScreenHeight()) - screenPos.Y
 				if el.Label != "" {
-					g.drawText(el.Label, screenPos.X-g.textWidth(el.Label, el.TextSize)/2, screenPos.Y-el.TextSize/2, el.TextSize, el.TextColor)
+					g.drawText(el.Label, screenPos.X-g.textWidth(el.Label, 28)/2, screenPos.Y-14, 28, el.TextColor)
 				}
-			}
 		}
 	}
 }
-
+}
 // ---------------------------------------------------------------------------
 // Billboard hover detection (called from input update)
 // ---------------------------------------------------------------------------
