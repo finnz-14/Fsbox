@@ -83,12 +83,14 @@ func init() {
 				}
 				dot := player.Forward.X*toJenny.X + player.Forward.Y*toJenny.Y + player.Forward.Z*toJenny.Z
 
-				if dist < 6.0 && dot > 0.5 && !guiOpen {
+				if dist < 15.0 && dot > 0.2 && !guiOpen {
 					guiOpen = true
+					fsbox.SetCursorLocked(false)
 					fsbox.Toast("Jenny GUI - use hand tool to click", fsbox.Color{R: 230, G: 166, B: 66, A: 255})
 					buildBillboard(jennyPos)
-				} else if (dist > 7.0 || dot < 0.3) && guiOpen {
+				} else if (dist > 16.0 || dot < 0.1) && guiOpen {
 					guiOpen = false
+					fsbox.SetCursorLocked(true)
 					fsbox.ClearBillboardPanels()
 					panelID = 0
 					btnIDs = nil
@@ -103,11 +105,11 @@ func init() {
 			guiOpen = !guiOpen
 			if guiOpen {
 				fsbox.Toast("Jenny GUI - use hand tool to click", fsbox.Color{R: 230, G: 166, B: 66, A: 255})
-				// Get current Jenny position for panel placement
 				if ent, err := fsbox.GetEntity(jennyEntity); err == nil {
 					buildBillboard(ent.Position)
 				}
 			} else {
+				fsbox.SetCursorLocked(true)
 				fsbox.ClearBillboardPanels()
 				panelID = 0
 				btnIDs = nil
@@ -161,12 +163,12 @@ func buildBillboard(jennyPos fsbox.Vec3) {
 	panelID = 0
 	btnIDs = nil
 
-	// Panel floats 2m to Jenny's right, at head height (y + 1.5).
-	px := jennyPos.X + 2.0
+	// Panel floats 2.5m to Jenny's right and 1.5m above her head.
+	px := jennyPos.X + 2.5
 	py := jennyPos.Y + 1.5
 	pz := jennyPos.Z
 
-	panel, err := fsbox.AddBillboardPanel(px, py, pz, 2.5, 1.6)
+	panel, err := fsbox.AddBillboardPanel(px, py, pz, 3.0, 1.8)
 	if err != nil {
 		fsbox.Log("[Jenny] add billboard panel failed: " + err.Error())
 		return
@@ -174,21 +176,21 @@ func buildBillboard(jennyPos fsbox.Vec3) {
 	panelID = panel
 
 	// Title at top of panel (centered).
-	fsbox.AddBillboardText(panelID, 0, 0.85, "Jenny", 0.4, fsbox.Color{R: 230, G: 166, B: 66, A: 255})
+	fsbox.AddBillboardText(panelID, 0, 0.85, "Jenny", 0.45, fsbox.Color{R: 230, G: 166, B: 66, A: 255})
 
 	// Animation buttons - vertical list on left side of panel.
 	btnIDs = nil
-	btnW := float32(2.0)
-	btnH := float32(0.14)
-	gap := float32(0.015)
-	startY := float32(0.6)
+	btnW := float32(2.4)
+	btnH := float32(0.16)
+	gap := float32(0.02)
+	startY := float32(0.65)
 
 	for i := int32(0); i < int32(len(animations)); i++ {
 		btnY := startY - float32(i)*(btnH+gap)
-		if btnY < -0.65 {
+		if btnY < -0.7 {
 			break
 		}
-		btn, err := fsbox.AddBillboardButton(panelID, -0.85, btnY, btnW, btnH, animations[i].Name, fsbox.Color{R: 40, G: 45, B: 50, A: 230})
+		btn, err := fsbox.AddBillboardButton(panelID, -0.95, btnY, btnW, btnH, animations[i].Name, fsbox.Color{R: 40, G: 45, B: 50, A: 230})
 		if err != nil {
 			fsbox.Log("[Jenny] add button failed: " + err.Error())
 			continue
@@ -197,20 +199,20 @@ func buildBillboard(jennyPos fsbox.Vec3) {
 	}
 
 	// Play button bottom left.
-	playBtn, err := fsbox.AddBillboardButton(panelID, -0.9, -0.75, 0.6, 0.08, "PLAY", fsbox.Color{R: 60, G: 120, B: 60, A: 230})
+	playBtn, err := fsbox.AddBillboardButton(panelID, -1.0, -0.8, 0.7, 0.09, "PLAY", fsbox.Color{R: 60, G: 120, B: 60, A: 230})
 	if err != nil {
 		fsbox.Log("[Jenny] add play button failed: " + err.Error())
 	}
 	playBtnID = playBtn
 
 	// Stop button bottom right.
-	stopBtn, err := fsbox.AddBillboardButton(panelID, 0.9, -0.75, 0.6, 0.08, "STOP", fsbox.Color{R: 160, G: 60, B: 60, A: 230})
+	stopBtn, err := fsbox.AddBillboardButton(panelID, 0.9, -0.75, 0.7, 0.08, "STOP", fsbox.Color{R: 160, G: 60, B: 60, A: 230})
 	if err != nil {
 		fsbox.Log("[Jenny] add stop button failed: " + err.Error())
 	}
 	stopBtnID = stopBtn
 
-	fsbox.Log("[Jenny] billboard built with " + fmt.Sprint(len(animations)) + " animations")
+	fsbox.Log("[Jenny] billboard built with " + fmt.Sprint(len(animations)) + " animations at " + fmt.Sprint(jennyPos))
 }
 
 func main() {}

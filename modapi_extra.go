@@ -468,10 +468,18 @@ var _ = box3d.QuatIdentity
 
 func (g *Game) apiBillboardAdd(owner string, args json.RawMessage) (any, error) {
 	var a struct {
-		X, Y, Z float32 `json:"x","y","z"`
-		FX, FY, FZ float32 `json:"face_x","face_y","face_z"`
-		RX, RY, RZ float32 `json:"right_x","right_y","right_z"`
-		UX, UY, UZ float32 `json:"up_x","up_y","up_z"`
+		X float32 `json:"x"`
+		Y float32 `json:"y"`
+		Z float32 `json:"z"`
+		FX float32 `json:"face_x"`
+		FY float32 `json:"face_y"`
+		FZ float32 `json:"face_z"`
+		RX float32 `json:"right_x"`
+		RY float32 `json:"right_y"`
+		RZ float32 `json:"right_z"`
+		UX float32 `json:"up_x"`
+		UY float32 `json:"up_y"`
+		UZ float32 `json:"up_z"`
 		Width  float32 `json:"width"`
 		Height float32 `json:"height"`
 	}
@@ -506,8 +514,10 @@ func (g *Game) apiBillboardAdd(owner string, args json.RawMessage) (any, error) 
 func (g *Game) apiBillboardButton(args json.RawMessage) (any, error) {
 	var a struct {
 		Panel   int32   `json:"panel"`
-		X, Y    float32 `json:"x","y"`
-		W, H    float32 `json:"w","h"`
+		X float32 `json:"x"`
+		Y float32 `json:"y"`
+		W float32 `json:"w"`
+		H float32 `json:"h"`
 		Label   string  `json:"label"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
@@ -541,7 +551,8 @@ func (g *Game) apiBillboardButton(args json.RawMessage) (any, error) {
 func (g *Game) apiBillboardText(args json.RawMessage) (any, error) {
 	var a struct {
 		Panel   int32   `json:"panel"`
-		X, Y    float32 `json:"x","y"`
+		X float32 `json:"x"`
+		Y float32 `json:"y"`
 		Label   string  `json:"label"`
 		Size    float32 `json:"size"`
 	}
