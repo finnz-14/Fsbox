@@ -729,7 +729,6 @@ func (g *Game) resetWorld(withStarter bool, spawn box3d.Pos, yaw, pitch float32,
 	}
 
 	g.world = newPhysicsWorld()
-	g.applyGravity()
 	g.entities = nil
 	g.props = nil
 	g.byBody = make(map[box3d.BodyID]*Entity)
@@ -749,6 +748,7 @@ func (g *Game) resetWorld(withStarter bool, spawn box3d.Pos, yaw, pitch float32,
 	g.time = 0
 	g.lastSpawn = nil
 	g.toolKick = 0
+	g.applyGravity()
 	g.player = newPlayer(g.world, spawn, yaw, pitch, fly)
 	g.loadMap(withStarter, g.selectedMap)
 	g.updateCamera()
