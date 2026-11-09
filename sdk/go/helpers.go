@@ -224,6 +224,48 @@ func SetCameraOffset(o Vec3) error {
 	return err
 }
 
+// WorldToScreen converts a 3D world position to 2D screen coordinates.
+func WorldToScreen(pos Vec3) (Vec3, error) {
+	raw, err := Call("render.world_to_screen", map[string]any{"position": pos})
+	if err != nil {
+		return Vec3{}, err
+	}
+	var v Vec3
+	_ = json.Unmarshal(raw, &v)
+	return v, nil
+}
+
+// ---------------------------------------------------------------------------
+// Cursor
+// ---------------------------------------------------------------------------
+
+func SetCursorLocked(locked bool) error {
+	_, err := Call("input.set_cursor_locked", map[string]any{"locked": locked})
+	return err
+}
+
+// InputKeyPressed queries whether a key was pressed this frame.
+func InputKeyPressed(key int32) (bool, error) {
+	raw, err := Call("input.key_pressed", map[string]any{"key": key})
+	if err != nil {
+		return false, err
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b, nil
+}
+
+// InputWheel returns the mouse wheel scroll amount.
+func InputWheel() (float32, error) {
+	raw, err := Call("input.wheel", nil)
+	if err != nil {
+		return 0, err
+	}
+	var v float32
+	_ = json.Unmarshal(raw, &v)
+	return v, nil
+}
+
 // ---------------------------------------------------------------------------
 // Audio
 // ---------------------------------------------------------------------------
