@@ -6,24 +6,21 @@ import (
 	fsbox "fsbox.dev/sdk"
 )
 
-//go:wasmexport mod_init
-func modInit() {
-	fmt.Println("[examplemod] init")
-	raw, err := fsbox.Call("entity.spawn", map[string]any{
-		"kind": "box",
-		"position": map[string]float32{"x": 0, "y": 4, "z": 0},
-		"color":    map[string]any{"r": 100, "g": 180, "b": 220, "a": 255},
+var spawned bool
+
+func init() {
+	fsbox.On("game.start", func(e fsbox.Event) {
+		fsbox.Log("examplemod ready")
 	})
-	fmt.Printf("[examplemod] spawn: %s err=%v\n", string(raw), err)
-
-	info, err := fsbox.Call("engine.info", nil)
-	fmt.Printf("[examplemod] engine info: %s err=%v\n", string(info), err)
+	fsbox.OnTick(func() {
+		if spawned {
+			return
+		}
+		spawned = true
+		fsbox.Log("tick: spawning")
+		id, err := fsbox.SpawnEntity("box", fsbox.Vec3{X: 0, Y: 4, Z: 0}, fsbox.Color{R: 100, G: 180, B: 220, A: 255})
+		fsbox.Log(fmt.Sprintf("spawned entity %d err=%v", id, err))
+	})
 }
-
-//go:wasmexport mod_update
-func modUpdate() {}
-
-//export mod_event
-func modEvent(ptr, size uint32) {}
 
 func main() {}
