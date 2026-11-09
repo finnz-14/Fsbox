@@ -359,6 +359,29 @@ type AnimationInfo struct {
 	Speed     float32
 }
 
+// EntityInfo is returned by GetEntity.
+type EntityInfo struct {
+	ID           int32  `json:"id"`
+	Name         string `json:"name"`
+	Kind         string `json:"kind"`
+	Position     Vec3   `json:"position"`
+	Health       float32 `json:"health"`
+	MaxHealth    float32 `json:"max_health"`
+	Frozen       bool   `json:"frozen"`
+}
+
+func GetEntity(id int32) (EntityInfo, error) {
+	raw, err := Call("entity.get", map[string]any{"id": id})
+	if err != nil {
+		return EntityInfo{}, err
+	}
+	var e EntityInfo
+	if err := json.Unmarshal(raw, &e); err != nil {
+		return EntityInfo{}, err
+	}
+	return e, nil
+}
+
 func GetAnimations(id int32) ([]AnimationInfo, error) {
 	raw, err := Call("entity.get_animations", map[string]any{"id": id})
 	if err != nil {

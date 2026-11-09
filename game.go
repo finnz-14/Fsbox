@@ -906,6 +906,7 @@ func (g *Game) syncCursor() {
 	} else if !wantLock && g.cursorLocked {
 		rl.EnableCursor()
 		g.cursorLocked = false
+		g.ignoreMouse = false
 	}
 }
 
