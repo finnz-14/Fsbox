@@ -99,6 +99,79 @@ func initMissingTexture() {
 // game is commonly launched from bin\fsbox.exe, so the working directory alone
 // is not enough: the folder also needs to be found next to (or above) the
 // executable.
+// mergeModContent overlays each mod's Content/ directory onto the base game's
+// Content/ directory into .merged_content/. Mod files with the same relative
+// path override base files; new files from mods are added. This lets mods ship
+// their own spawnables, maps, textures, models, etc. without touching the base
+// game folder.
+//
+// Example:
+//   Mods/jenny.mod/Content/Spawnables/Jenny/Jenny/jennynude.glb
+//   Mods/other.mod/Content/Spawnables/jenny/jenny/model.glb
+// produces two categories: "Jenny" and "jenny".
+func mergeModContent() {
+	root := ".merged_content"
+	spawnablesDir := filepath.Join(root, "Spawnables")
+
+	// Start fresh.
+	os.RemoveAll(root)
+
+	// Copy base Content/Spawnables first (if it exists).
+	if info, err := os.Stat("Content"); err == nil && info.IsDir() {
+		if entries, _ := os.ReadDir("Content"); entries != nil {
+			for _, e := range entries {
+				if e.IsDir() && e.Name() == "Spawnables" {
+					copyDir(filepath.Join("Content", "Spawnables"), spawnablesDir)
+				}
+			}
+		}
+	}
+
+	// Overlay each mod's Content/Spawnables/ directory. Mod files override
+	// base files with the same relative path; new files are simply added.
+	if entries, _ := os.ReadDir("Mods"); entries != nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			modSpawnablesDir := filepath.Join("Mods", e.Name(), "Content", "Spawnables")
+			if info, err := os.Stat(modSpawnablesDir); err == nil && info.IsDir() {
+				copyDir(modSpawnablesDir, spawnablesDir)
+			}
+		}
+	}
+}
+
+// copyDir recursively copies src into dst, creating directories as needed.
+// Files with the same relative path override existing files in dst.
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		sp := filepath.Join(src, e.Name())
+		dp := filepath.Join(dst, e.Name())
+		if e.IsDir() {
+			if err := copyDir(sp, dp); err != nil {
+				return err
+			}
+		} else {
+			data, err := os.ReadFile(sp)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(dp, data, 0644); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func contentSearchCandidates() []string {
 	var out []string
 	seen := map[string]bool{}
@@ -117,6 +190,9 @@ func contentSearchCandidates() []string {
 		seen[key] = true
 		out = append(out, abs)
 	}
+
+	// Merged mod content takes priority over base game content.
+	add(filepath.Join(".merged_content", "Spawnables"))
 
 	add(filepath.Join("Content", "Spawnables"))
 	if exe, err := os.Executable(); err == nil {

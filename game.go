@@ -413,6 +413,7 @@ func NewGame() *Game {
 		skyTop:          colSkyTop,
 		skyBottom:       colSkyBottom,
 	}
+	mergeModContent()
 	loadContentSpawnables()
 	g.font = loadUIFont(&g.fontCustom)
 	g.persistSettings = true
@@ -501,6 +502,7 @@ func (g *Game) Close() {
 		rl.UnloadFont(g.font)
 		g.fontCustom = false
 	}
+	os.RemoveAll(".merged_content")
 }
 
 // ---------------------------------------------------------------------------
