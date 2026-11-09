@@ -43,11 +43,48 @@ type contentManifest struct {
 	Half        []float32
 }
 
-//go:embed Content/Spawnables/*.json
+//go:embed Content/Spawnables
 var embeddedSpawnables embed.FS
+
+//go:embed Content/Maps/*.json
+var embeddedMaps embed.FS
 
 var contentLoaded bool
 var missingTexture rl.Texture2D
+
+type mapVec struct {
+	X float32 `json:"x"`
+	Y float32 `json:"y"`
+	Z float32 `json:"z"`
+}
+
+type mapStatic struct {
+	Kind    string  `json:"kind"`
+	Name    string  `json:"name"`
+	Pos     mapVec  `json:"pos"`
+	Half    mapVec  `json:"half"`
+	Radius  float32 `json:"radius"`
+	Height  float32 `json:"height"`
+	Color   []int   `json:"color"`
+	Yaw     float32 `json:"yaw"`
+	Pitch   float32 `json:"pitch"`
+	Roll    float32 `json:"roll"`
+}
+
+type mapProp struct {
+	Preset string  `json:"preset"`
+	Pos    mapVec  `json:"pos"`
+	Color  []int   `json:"color"`
+	Yaw    float32 `json:"yaw"`
+	Pitch  float32 `json:"pitch"`
+	Roll   float32 `json:"roll"`
+}
+
+type mapFile struct {
+	Name   string     `json:"name"`
+	Static []mapStatic `json:"static"`
+	Props  []mapProp   `json:"props"`
+}
 
 func initMissingTexture() {
 	if missingTexture.ID != 0 {
@@ -156,6 +193,8 @@ func loadLooseJSONSpawnables(dir string) {
 	}
 	for _, e := range entries {
 		if e.IsDir() {
+			// Recurse into category subfolders.
+			loadLooseJSONSpawnables(filepath.Join(dir, e.Name()))
 			continue
 		}
 		if !strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
@@ -235,29 +274,35 @@ func loadLooseJSONSpawnables(dir string) {
 // This keeps tests and headless runs working even when the working directory
 // does not contain a Content/Spawnables folder.
 func loadEmbeddedSpawnables() {
-	entries, err := embeddedSpawnables.ReadDir("Content/Spawnables")
-	if err != nil {
-		fmt.Printf("[content] embedded read failed: %v\n", err)
-		return
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if !strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
-			continue
-		}
-		data, err := embeddedSpawnables.ReadFile("Content/Spawnables/" + e.Name())
+	var walk func(base string)
+	walk = func(base string) {
+		entries, err := embeddedSpawnables.ReadDir(base)
 		if err != nil {
-			continue
+			return
 		}
-		var cs contentSpawnable
-		if err := json.Unmarshal(data, &cs); err != nil {
-			continue
-		}
-		if cs.Name == "" {
-			cs.Name = strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
-		}
+		for _, e := range entries {
+			full := base + "/" + e.Name()
+			if e.IsDir() {
+				walk(full)
+				continue
+			}
+			if !strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
+				continue
+			}
+			if strings.EqualFold(e.Name(), "manifest.json") {
+				continue
+			}
+			data, err := embeddedSpawnables.ReadFile(full)
+			if err != nil {
+				continue
+			}
+			var cs contentSpawnable
+			if err := json.Unmarshal(data, &cs); err != nil {
+				continue
+			}
+			if cs.Name == "" {
+				cs.Name = strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+			}
 		p := ShapePreset{Name: cs.Name, Density: cs.Density, Friction: cs.Friction, Restitution: cs.Restitution}
 		switch strings.ToLower(cs.Kind) {
 		case "sphere", "ball":
@@ -307,7 +352,9 @@ func loadEmbeddedSpawnables() {
 			p.Category = "MISC"
 		}
 		presets = append(presets, p)
+		}
 	}
+	walk("Content/Spawnables")
 }
 
 // loadFolderSpawnables implements the documented layout:
@@ -973,3 +1020,91 @@ func rebuildSpawnCategories() {
 
 // Keep box3d import used.
 var _ = box3d.Vec3Zero
+
+func findMapFile() (string, bool) {
+	candidates := []string{
+		filepath.Join("Content", "Maps", "default.json"),
+	}
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "Content", "Maps", "default.json"),
+			filepath.Join(exeDir, "..", "Content", "Maps", "default.json"),
+		)
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c, true
+		}
+	}
+	return "", false
+}
+
+func (g *Game) loadMap(withStarter bool) {
+	path, ok := findMapFile()
+	var data []byte
+	var err error
+	if ok {
+		data, err = os.ReadFile(path)
+	}
+	if err != nil || len(data) == 0 {
+		// embedded fallback
+		data, err = embeddedMaps.ReadFile("Content/Maps/default.json")
+	}
+	if err != nil {
+		fmt.Printf("[map] failed to load map: %v\n", err)
+		return
+	}
+	var m mapFile
+	if err := json.Unmarshal(data, &m); err != nil {
+		fmt.Printf("[map] parse failed: %v\n", err)
+		return
+	}
+
+	// Static geometry
+	for _, s := range m.Static {
+		col := rl.Color{R: 128, G: 128, B: 128, A: 255}
+		if len(s.Color) >= 3 {
+			col = rl.NewColor(uint8(s.Color[0]), uint8(s.Color[1]), uint8(s.Color[2]), 255)
+		}
+		rot := box3d.MakeQuatFromAxisAngle(box3d.Vec3{Y: 1}, s.Yaw)
+		rot = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{X: 1}, s.Pitch), rot)
+		rot = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{Z: 1}, s.Roll), rot)
+		rot = normalizeQuat(rot)
+		hx, hy, hz := float32(0.5), float32(0.5), float32(0.5)
+		if s.Half.X != 0 { hx = s.Half.X }
+		if s.Half.Y != 0 { hy = s.Half.Y }
+		if s.Half.Z != 0 { hz = s.Half.Z }
+		g.addBoxEntity(true, bp(s.Pos.X, s.Pos.Y, s.Pos.Z), rot, bv(hx, hy, hz), col, s.Name, 1000, 0.7, 0.0)
+	}
+
+	if !withStarter {
+		return
+	}
+
+	// Starter props
+	for _, pp := range m.Props {
+		preset := findPreset(pp.Preset)
+		if preset == nil {
+			continue
+		}
+		col := preset.Color
+		if len(pp.Color) >= 3 {
+			col = rl.NewColor(uint8(pp.Color[0]), uint8(pp.Color[1]), uint8(pp.Color[2]), 255)
+		}
+		rot := box3d.MakeQuatFromAxisAngle(box3d.Vec3{Y: 1}, pp.Yaw)
+		rot = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{X: 1}, pp.Pitch), rot)
+		rot = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{Z: 1}, pp.Roll), rot)
+		rot = normalizeQuat(rot)
+		g.spawnPreset(*preset, bp(pp.Pos.X, pp.Pos.Y, pp.Pos.Z), rot, col)
+	}
+}
+
+func findPreset(name string) *ShapePreset {
+	for i := range presets {
+		if presets[i].Name == name {
+			return &presets[i]
+		}
+	}
+	return nil
+}
