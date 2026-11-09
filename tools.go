@@ -128,6 +128,15 @@ func (g *Game) primaryAction() {
 	}
 	switch g.tool {
 	case toolHand:
+		// If already holding something, release it (ungrab).
+		if g.held != nil {
+			if g.mods != nil {
+				g.mods.FireEvent("entity.release", g.entityInfo(g.held))
+			}
+			g.held = nil
+			g.toast("RELEASED", colMuted)
+			return
+		}
 		// First try to click a UI element (mod UI panel, animation GUI, etc.).
 		if g.clickUIElement() {
 			return

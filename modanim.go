@@ -12,13 +12,16 @@ import (
 const animProximityDist = 3.5
 
 // updateAnimationProximity checks all animated entities and sets
-// g.animGUIEntity to the closest one within range (or -1 if none).
+// g.animGUIEntity to the closest one that the player is both near AND aiming
+// at (or -1 if none). This prevents the GUI from popping up when just walking
+// past an animated entity.
 func (g *Game) updateAnimationProximity() {
 	if g.player == nil {
 		g.animGUIEntity = -1
 		return
 	}
 	p := g.player.body.GetPosition()
+	fwd := g.cameraForward()
 
 	bestID := int32(-1)
 	bestDist := float32(animProximityDist)
@@ -32,10 +35,19 @@ func (g *Game) updateAnimationProximity() {
 		dy := ep.Y - p.Y
 		dz := ep.Z - p.Z
 		dist := float32(math.Sqrt(float64(dx*dx + dy*dy + dz*dz)))
-		if dist < bestDist {
-			bestDist = dist
-			bestID = e.ID
+		if dist >= bestDist {
+			continue
 		}
+		// Only show GUI if the entity is roughly in front of the camera
+		// (dot product of forward vector and direction to entity).
+		toEnt := rlv(ep.X-p.X, ep.Y-p.Y, ep.Z-p.Z)
+		toEnt = normRl(toEnt)
+		dot := fwd.X*toEnt.X + fwd.Y*toEnt.Y + fwd.Z*toEnt.Z
+		if dot < 0.5 {
+			continue
+		}
+		bestDist = dist
+		bestID = e.ID
 	}
 	g.animGUIEntity = bestID
 }
@@ -54,7 +66,9 @@ func (g *Game) updateAnimations(dt float32) {
 			continue
 		}
 		anim := e.Animations[e.AnimCurrent]
-		e.AnimFrame += e.AnimSpeed * dt
+		// Advance frames assuming ~30 FPS animation source; AnimSpeed is a
+		// multiplier (1.0 = normal speed, 2.0 = double speed, etc.).
+		e.AnimFrame += e.AnimSpeed * 30.0 * dt
 		if e.AnimFrame >= float32(anim.KeyframeCount) {
 			e.AnimFrame = 0
 		}
