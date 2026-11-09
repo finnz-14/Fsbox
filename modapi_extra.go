@@ -167,8 +167,10 @@ func (g *Game) apiModelLoad(args json.RawMessage) (any, error) {
 	if model.MeshCount == 0 && model.MaterialCount == 0 {
 		// LoadModel may still succeed for some formats; check mesh pointer.
 	}
+	anims := rl.LoadModelAnimations(a.Path)
 	g.modModelLast++
 	g.modModels[g.modModelLast] = model
+	g.modModelAnims[g.modModelLast] = anims
 	return g.modModelLast, nil
 }
 
@@ -182,6 +184,10 @@ func (g *Game) apiModelUnload(args json.RawMessage) (any, error) {
 	if m, ok := g.modModels[a.Model]; ok {
 		rl.UnloadModel(m)
 		delete(g.modModels, a.Model)
+	}
+	if anims, ok := g.modModelAnims[a.Model]; ok {
+		rl.UnloadModelAnimations(anims)
+		delete(g.modModelAnims, a.Model)
 	}
 	return true, nil
 }

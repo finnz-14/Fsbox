@@ -270,6 +270,15 @@ type Entity struct {
 	Hulls       []*box3d.HullData
 	Mesh        *box3d.MeshData
 	Owner       string
+
+	// Model animations (glTF, etc.). Loaded alongside the model; per-entity
+	// playback state lives here so multiple instances of the same model can
+	// play different animations.
+	Animations   []rl.ModelAnimation
+	AnimCurrent  int32
+	AnimFrame    float32
+	AnimPlaying  bool
+	AnimSpeed    float32
 }
 
 func (e *Entity) position() rl.Vector3 {
@@ -311,6 +320,9 @@ type ShapePreset struct {
 	Hull        *box3d.HullData
 	Hulls       []*box3d.HullData
 	Mesh        *box3d.MeshData
+
+	// Model animations loaded alongside the model.
+	Animations []rl.ModelAnimation
 }
 
 // support returns how far the centre of an unrotated preset extends along a
@@ -668,15 +680,38 @@ func (g *Game) spawnPreset(p ShapePreset, pos box3d.Pos, rot box3d.Quat, c rl.Co
 	switch p.Kind {
 	case PropBox:
 		if len(p.Hulls) > 0 {
-			return g.addHullsEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Hulls, p.Model, p.HasModel)
+			e := g.addHullsEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Hulls, p.Model, p.HasModel)
+			if p.HasModel && len(p.Animations) > 0 {
+				e.Animations = p.Animations
+				e.AnimCurrent = 0
+				e.AnimFrame = 0
+				e.AnimPlaying = false
+				e.AnimSpeed = 1
+			}
+			return e
 		}
 		if p.Hull != nil {
-			return g.addHullEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Hull, p.Model, p.HasModel)
+			e := g.addHullEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Hull, p.Model, p.HasModel)
+			if p.HasModel && len(p.Animations) > 0 {
+				e.Animations = p.Animations
+				e.AnimCurrent = 0
+				e.AnimFrame = 0
+				e.AnimPlaying = false
+				e.AnimSpeed = 1
+			}
+			return e
 		}
 		e := g.addBoxEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution)
 		if p.HasModel {
 			e.Model = p.Model
 			e.HasModel = true
+			e.Animations = p.Animations
+			if len(p.Animations) > 0 {
+				e.AnimCurrent = 0
+				e.AnimFrame = 0
+				e.AnimPlaying = false
+				e.AnimSpeed = 1
+			}
 		}
 		e.Hull = p.Hull
 		return e

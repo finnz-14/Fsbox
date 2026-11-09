@@ -452,6 +452,10 @@ func loadContentObject(category, objectDir string) {
 		return
 	}
 
+	// Load animations from the same file (glTF embeds animations).
+	anims := rl.LoadModelAnimations(mainModel)
+	fmt.Printf("[content]     animations: %d\n", len(anims))
+
 	applyMissingTexture(&model)
 	bb := rl.GetModelBoundingBox(model)
 	hx := (bb.Max.X - bb.Min.X) * 0.5
@@ -531,6 +535,7 @@ func loadContentObject(category, objectDir string) {
 		Hull:        hull,
 		Hulls:       hulls,
 		Mesh:        mesh,
+		Animations:  anims,
 	}
 	if manifest.Density > 0 {
 		p.Density = manifest.Density

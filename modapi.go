@@ -2026,6 +2026,117 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		e.Model = m
 		e.HasModel = true
 		return true, nil
+	case "entity.get_animations":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		if e == nil || len(e.Animations) == 0 {
+			return []any{}, nil
+		}
+		out := make([]any, 0, len(e.Animations))
+		for i, anim := range e.Animations {
+			out = append(out, map[string]any{
+				"index":       i,
+				"name":        anim.GetName(),
+				"keyframes":   anim.KeyframeCount,
+				"bones":       anim.BoneCount,
+				"current":     int32(i) == e.AnimCurrent,
+				"playing":     e.AnimPlaying,
+				"frame":       e.AnimFrame,
+				"speed":       e.AnimSpeed,
+			})
+		}
+		return out, nil
+	case "entity.play_animation":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		var a struct {
+			Anim     *string `json:"anim"`
+			AnimIdx  int32   `json:"anim_index"`
+			Speed    *float32 `json:"speed"`
+			Loop     *bool   `json:"loop"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		if e == nil || len(e.Animations) == 0 {
+			return false, nil
+		}
+		idx := a.AnimIdx
+		if a.Anim != nil {
+			idx = -1
+			for i, anim := range e.Animations {
+				if anim.GetName() == *a.Anim {
+					idx = int32(i)
+					break
+				}
+			}
+			if idx < 0 {
+				return false, fmt.Errorf("animation %q not found", *a.Anim)
+			}
+		}
+		if idx < 0 || int(idx) >= len(e.Animations) {
+			return false, nil
+		}
+		e.AnimCurrent = idx
+		e.AnimFrame = 0
+		e.AnimPlaying = true
+		if a.Speed != nil {
+			e.AnimSpeed = *a.Speed
+		} else {
+			e.AnimSpeed = 1
+		}
+		return true, nil
+	case "entity.pause_animation":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		if e == nil {
+			return false, nil
+		}
+		e.AnimPlaying = false
+		return true, nil
+	case "entity.resume_animation":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		if e == nil || len(e.Animations) == 0 {
+			return false, nil
+		}
+		e.AnimPlaying = true
+		return true, nil
+	case "entity.set_animation_speed":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		var a struct {
+			Speed float32 `json:"speed"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		if e == nil {
+			return false, nil
+		}
+		e.AnimSpeed = a.Speed
+		return true, nil
+	case "entity.stop_animation":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		if e == nil {
+			return false, nil
+		}
+		e.AnimPlaying = false
+		e.AnimFrame = 0
+		return true, nil
 	}
 	return nil, fmt.Errorf("unknown command %q", cmd)
 }

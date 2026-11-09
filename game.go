@@ -183,6 +183,7 @@ type Game struct {
 	// ------------------------------------------------------------------
 	modModels       map[int32]rl.Model
 	modModelLast    int32
+	modModelAnims   map[int32][]rl.ModelAnimation
 	modShaders      map[int32]rl.Shader
 	modShaderLast   int32
 	modUIElements   []ModUIElement
@@ -225,6 +226,9 @@ type Game struct {
 
 	// Mod hooks that should run during the HUD phase.
 	modHUDHooks []string
+
+	// Entity whose animation GUI is currently shown (set by proximity).
+	animGUIEntity int32
 
 	// Frame counter and simulation time scale.
 	frame     int64
@@ -426,6 +430,7 @@ func NewGame() *Game {
 	g.modMouseHooks = make(map[int32][]string)
 	g.modSounds = make(map[string]rl.Sound)
 	g.modModels = make(map[int32]rl.Model)
+	g.modModelAnims = make(map[int32][]rl.ModelAnimation)
 	g.modShaders = make(map[int32]rl.Shader)
 	g.cameraDistance = 6
 	g.cameraOffset = rlv(0, 1.5, 0)
@@ -554,6 +559,8 @@ func (g *Game) Update(dt float64) {
 		g.updateWaves(float32(simDt))
 		g.updateModParticles(float32(simDt))
 		g.updateMusic()
+		g.updateAnimationProximity()
+		g.updateAnimations(float32(simDt))
 		if g.shake > 0 {
 			g.shake -= simDt
 			if g.shake < 0 {

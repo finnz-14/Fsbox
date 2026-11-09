@@ -121,6 +121,7 @@ func (g *Game) Draw() {
 	g.drawToasts()
 	g.drawModUI()
 	g.drawUIElements()
+	g.drawAnimGUI()
 	rl.EndMode2D()
 
 	rl.EndDrawing()
