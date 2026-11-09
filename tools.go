@@ -122,6 +122,9 @@ func (g *Game) primaryAction() {
 	switch g.tool {
 	case toolPhysgun:
 		if g.held != nil {
+			if g.mods != nil {
+				g.mods.FireEvent("entity.release", g.entityInfo(g.held))
+			}
 			g.held = nil
 		} else {
 			g.grab()

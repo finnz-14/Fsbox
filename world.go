@@ -1052,6 +1052,9 @@ func (g *Game) grab() {
 		return
 	}
 	g.held = e
+	if g.mods != nil {
+		g.mods.FireEvent("entity.grab", g.entityInfo(e))
+	}
 	// Remember the grabbed point in body-local space so the prop pivots
 	// around the grab point instead of its centre.
 	hit := toRlP(res.Point)

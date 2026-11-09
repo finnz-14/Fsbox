@@ -1,0 +1,11 @@
+{
+  "id": "cratecolor.developer",
+  "name": "Crate Color on Grab",
+  "version": "1.0.0",
+  "author": "Developer",
+  "description": "Changes a crate's color when it is grabbed",
+  "runtime": "wasm",
+  "entry": "main.wasm",
+  "game_version": ">=1.0.0",
+  "dependencies": []
+}
