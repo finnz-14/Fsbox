@@ -174,6 +174,23 @@ type Game struct {
 	menuModToolSel  int32
 	toolModColor    rl.Color
 
+	// ------------------------------------------------------------------
+	// Extended modding runtime state
+	// ------------------------------------------------------------------
+	modModels       map[int32]rl.Model
+	modModelLast    int32
+	modShaders      map[int32]rl.Shader
+	modShaderLast   int32
+	modUIElements   []ModUIElement
+	modUIElementLast int32
+
+	// Camera/player model control.
+	cameraMode     int32 // 0 = first person, 1 = third person
+	cameraDistance float32
+	cameraOffset   rl.Vector3
+	playerModel    rl.Model
+	playerHasModel bool
+
 	// Active constraints created by mods via box3d joints.
 	modConstraints    []*ModConstraint
 	modConstraintLast int32
@@ -347,6 +364,20 @@ type ModDebugCmd struct {
 	Segments  int32
 }
 
+// ModUIElement is an interactive UI element registered by a mod.
+type ModUIElement struct {
+	ID     int32
+	Kind   string // button, panel, slider, text_input
+	X, Y   float32
+	W, H   float32
+	Label  string
+	Color  rl.Color
+	Value  float32
+	Min    float32
+	Max    float32
+	Owner  string
+}
+
 // ------------------------------------------------------------------
 // Game constructor
 // ------------------------------------------------------------------
@@ -389,6 +420,10 @@ func NewGame() *Game {
 	g.modInputHooks = make(map[int32][]string)
 	g.modMouseHooks = make(map[int32][]string)
 	g.modSounds = make(map[string]rl.Sound)
+	g.modModels = make(map[int32]rl.Model)
+	g.modShaders = make(map[int32]rl.Shader)
+	g.cameraDistance = 6
+	g.cameraOffset = rlv(0, 1.5, 0)
 	g.modMusic = make(map[string]rl.Music)
 	g.modMusicVol = make(map[string]float32)
 	g.toast("FSBOX ONLINE  //  E SPAWN  //  C TOOLS  //  F1 MANUAL", colAccent)
@@ -468,6 +503,7 @@ func (g *Game) Update(dt float64) {
 	g.updateUIInput()
 	g.updateToolAnimation(float32(dt))
 	g.fireInputEvents()
+	g.updateUIElements()
 
 	if g.state == statePlaying {
 		g.updateLook()
@@ -520,6 +556,7 @@ func (g *Game) Update(dt float64) {
 		g.mods.Tick(g, simDt)
 	}
 	g.updateCamera()
+	g.updateThirdPersonCamera()
 	g.syncCursor()
 }
 

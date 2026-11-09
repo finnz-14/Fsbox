@@ -86,6 +86,7 @@ func (g *Game) Draw() {
 	g.drawParticles()
 	g.drawModParticles()
 	g.drawModDebug()
+	g.drawPlayerModel()
 	rl.EndMode3D()
 
 	// The tool gun is a separate, close-range 3D pass. Drawing it after the
@@ -113,6 +114,7 @@ func (g *Game) Draw() {
 	}
 	g.drawToasts()
 	g.drawModUI()
+	g.drawUIElements()
 	rl.EndMode2D()
 
 	rl.EndDrawing()

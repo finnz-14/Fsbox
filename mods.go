@@ -922,6 +922,14 @@ func permissionForCommand(cmd string) string {
 		return "net"
 	case strings.HasPrefix(cmd, "camera."):
 		return "camera"
+	case strings.HasPrefix(cmd, "config."):
+		return "config"
+	case strings.HasPrefix(cmd, "model."):
+		return "model"
+	case strings.HasPrefix(cmd, "shader."):
+		return "shader"
+	case strings.HasPrefix(cmd, "ui.add_element"), strings.HasPrefix(cmd, "ui.remove_element"), strings.HasPrefix(cmd, "ui.set_element"), strings.HasPrefix(cmd, "ui.clear_elements"):
+		return "ui.interact"
 	default:
 		return "engine.read"
 	}

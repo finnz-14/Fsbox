@@ -1851,6 +1851,45 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		return true, nil
 
 	// ----- camera ---------------------------------------------------------
+	case "camera.get":
+		return map[string]any{
+			"position": vecInfo(g.camera.Position),
+			"target":   vecInfo(g.camera.Target),
+			"up":       vecInfo(g.camera.Up),
+			"fov":      g.camera.Fovy,
+			"mode":     g.cameraMode,
+			"distance": g.cameraDistance,
+		}, nil
+	case "camera.set_mode":
+		var a struct {
+			Mode int32 `json:"mode"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		g.cameraMode = a.Mode
+		return g.cameraMode, nil
+	case "camera.set_distance":
+		var a struct {
+			Distance float32 `json:"distance"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		if a.Distance < 1 {
+			a.Distance = 1
+		}
+		g.cameraDistance = a.Distance
+		return g.cameraDistance, nil
+	case "camera.set_offset":
+		var a struct {
+			Offset Vec3Info `json:"offset"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		g.cameraOffset = a.Offset.rl()
+		return vecInfo(g.cameraOffset), nil
 	case "camera.shake":
 		var a struct {
 			Amount float32 `json:"amount"`
@@ -1860,13 +1899,91 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		}
 		g.shake = float64(clampf(a.Amount, 0, 5))
 		return true, nil
-	case "camera.get":
-		return map[string]any{
-			"position": vecInfo(g.camera.Position),
-			"target":   vecInfo(g.camera.Target),
-			"up":       vecInfo(g.camera.Up),
-			"fov":      g.camera.Fovy,
-		}, nil
+
+	// ----- config (persistent, root-level file I/O) -----------------------
+	case "config.read_text":
+		return g.apiConfigRead(args)
+	case "config.write_text":
+		return g.apiConfigWrite(args)
+	case "config.exists":
+		return g.apiConfigExists(args)
+	case "config.delete":
+		return g.apiConfigDelete(args)
+	case "config.list":
+		return g.apiConfigList(args)
+	case "config.mkdir":
+		return g.apiConfigMkdir(args)
+
+	// ----- model ---------------------------------------------------------
+	case "model.load":
+		return g.apiModelLoad(args)
+	case "model.unload":
+		return g.apiModelUnload(args)
+	case "model.list_files":
+		return g.apiModelListFiles(args)
+
+	// ----- shader --------------------------------------------------------
+	case "shader.load":
+		return g.apiShaderLoad(args)
+	case "shader.unload":
+		return g.apiShaderUnload(args)
+
+	// ----- ui (interactive elements) -------------------------------------
+	case "ui.add_element":
+		return g.apiUIAddElement(owner, args)
+	case "ui.remove_element":
+		return g.apiUIRemoveElement(args)
+	case "ui.set_element":
+		return g.apiUISetElement(args)
+	case "ui.list_elements":
+		out := make([]ModUIElement, 0, len(g.modUIElements))
+		out = append(out, g.modUIElements...)
+		return out, nil
+	case "ui.clear_elements":
+		g.modUIElements = nil
+		return true, nil
+
+	// ----- player model ---------------------------------------------------
+	case "player.set_model":
+		var a struct {
+			Model int32 `json:"model"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		m, ok := g.modModels[a.Model]
+		if !ok {
+			return false, fmt.Errorf("model %d not loaded", a.Model)
+		}
+		g.playerModel = m
+		g.playerHasModel = true
+		return true, nil
+	case "player.clear_model":
+		g.playerHasModel = false
+		return true, nil
+
+	// ----- entity model ---------------------------------------------------
+	case "entity.set_model":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		var a struct {
+			Model int32 `json:"model"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		if e == nil {
+			return false, nil
+		}
+		m, ok := g.modModels[a.Model]
+		if !ok {
+			return false, fmt.Errorf("model %d not loaded", a.Model)
+		}
+		e.Model = m
+		e.HasModel = true
+		return true, nil
 	}
 	return nil, fmt.Errorf("unknown command %q", cmd)
 }
