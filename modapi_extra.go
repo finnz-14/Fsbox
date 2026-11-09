@@ -664,7 +664,7 @@ func (g *Game) raycastBillboard(origin, dir rl.Vector3, maxDist float32) (int32,
 }
 
 // ---------------------------------------------------------------------------
-// Billboard rendering
+// Billboard rendering - panels render in 3D world space, always facing camera
 // ---------------------------------------------------------------------------
 
 func (g *Game) drawBillboards() {
@@ -674,43 +674,51 @@ func (g *Game) drawBillboards() {
 	camPos := g.camera.Position
 
 	for _, b := range g.modBillboards {
-		// Billboard always faces camera
+		// Billboards always face the camera
 		toCam := rlv(camPos.X-b.Pos.X, camPos.Y-b.Pos.Y, camPos.Z-b.Pos.Z)
 		dist := lenRl(toCam)
 		if dist < 0.01 {
 			continue
 		}
 		toCam = normRl(toCam)
-		// Face the camera
-		face := toCam
-		// Compute right and up for the panel
+
+		// Compute right/up axes so panel faces camera
 		worldUp := rlv(0, 1, 0)
 		right := normRl(rlv(
-			worldUp.Y*face.Z-worldUp.Z*face.Y,
-			worldUp.Z*face.X-worldUp.X*face.Z,
-			worldUp.X*face.Y-worldUp.Y*face.X,
+			worldUp.Y*toCam.Z-worldUp.Z*toCam.Y,
+			worldUp.Z*toCam.X-worldUp.X*toCam.Z,
+			worldUp.X*toCam.Y-worldUp.Y*toCam.X,
 		))
 		if lenRl(right) < 1e-6 {
 			right = rlv(1, 0, 0)
 		}
 		up := normRl(rlv(
-			face.Y*right.Z-face.Z*right.Y,
-			face.Z*right.X-face.X*right.Z,
-			face.X*right.Y-face.Y*right.X,
+			toCam.Y*right.Z-toCam.Z*right.Y,
+			toCam.Z*right.X-toCam.X*right.Z,
+			toCam.X*right.Y-toCam.Y*right.X,
 		))
 
-		// Draw panel background as a quad
 		hw := b.Width / 2
 		hh := b.Height / 2
-		cornerTL := rlv(b.Pos.X+right.X*(-hw)+up.X*(-hh), b.Pos.Y+right.Y*(-hw)+up.Y*(-hh), b.Pos.Z+right.Z*(-hw)+up.Z*(-hh))
-		cornerTR := rlv(b.Pos.X+right.X*(hw)+up.X*(-hh), b.Pos.Y+right.Y*(hw)+up.Y*(-hh), b.Pos.Z+right.Z*(hw)+up.Z*(-hh))
-		cornerBR := rlv(b.Pos.X+right.X*(hw)+up.X*(hh), b.Pos.Y+right.Y*(hw)+up.Y*(hh), b.Pos.Z+right.Z*(hw)+up.Z*(hh))
-		cornerBL := rlv(b.Pos.X+right.X*(-hw)+up.X*(hh), b.Pos.Y+right.Y*(-hw)+up.Y*(hh), b.Pos.Z+right.Z*(-hw)+up.Z*(hh))
 
-		rl.DrawTriangle3D(cornerTL, cornerTR, cornerBR, rgba(20, 24, 30, 200))
-		rl.DrawTriangle3D(cornerTL, cornerBR, cornerBL, rgba(20, 24, 30, 200))
-		rl.DrawTriangle3D(cornerTL, cornerTR, cornerBR, colBorderHi) // outline
-		rl.DrawTriangle3D(cornerTL, cornerBR, cornerBL, colBorderHi)
+		// Draw panel quad - both sides so it's visible from any angle
+		bl := rlv(b.Pos.X+right.X*(-hw)+up.X*(-hh), b.Pos.Y+right.Y*(-hw)+up.Y*(-hh), b.Pos.Z+right.Z*(-hw)+up.Z*(-hh))
+		br := rlv(b.Pos.X+right.X*(hw)+up.X*(-hh), b.Pos.Y+right.Y*(hw)+up.Y*(-hh), b.Pos.Z+right.Z*(hw)+up.Z*(-hh))
+		tr := rlv(b.Pos.X+right.X*(hw)+up.X*(hh), b.Pos.Y+right.Y*(hw)+up.Y*(hh), b.Pos.Z+right.Z*(hw)+up.Z*(hh))
+		tl := rlv(b.Pos.X+right.X*(-hw)+up.X*(hh), b.Pos.Y+right.Y*(-hw)+up.Y*(hh), b.Pos.Z+right.Z*(-hw)+up.Z*(hh))
+
+		bg := rgba(24, 26, 30, 220)
+		border := colBorderHi
+		// Draw both triangles for visibility
+		rl.DrawTriangle3D(tl, tr, br, bg)
+		rl.DrawTriangle3D(tl, br, bl, bg)
+		rl.DrawTriangle3D(tr, tl, bl, bg)
+		rl.DrawTriangle3D(br, tr, bl, bg)
+		// Border edges
+		rl.DrawLine3D(tl, tr, border)
+		rl.DrawLine3D(tr, br, border)
+		rl.DrawLine3D(br, bl, border)
+		rl.DrawLine3D(bl, tl, border)
 
 		// Draw elements
 		for _, el := range b.Elements {
@@ -719,7 +727,6 @@ func (g *Game) drawBillboards() {
 			elZ := b.Pos.Z + right.Z*el.X + up.Z*el.Y
 
 			if el.Kind == "button" {
-				// Draw button quad
 				ehw := el.W / 2
 				ehh := el.H / 2
 				btnTL := rlv(elX+right.X*(-ehw)+up.X*(-ehh), elY+right.Y*(-ehw)+up.Y*(-ehh), elZ+right.Z*(-ehw)+up.Z*(-ehh))
@@ -729,21 +736,26 @@ func (g *Game) drawBillboards() {
 
 				btnCol := el.Color
 				if el.Hovered {
-					btnCol = withAlpha(el.Color, 200)
+					btnCol = withAlpha(el.Color, 210)
 				}
 				rl.DrawTriangle3D(btnTL, btnTR, btnBR, btnCol)
 				rl.DrawTriangle3D(btnTL, btnBR, btnBL, btnCol)
-				rl.DrawTriangle3D(btnTL, btnTR, btnBR, colBorderHi)
-				rl.DrawTriangle3D(btnTL, btnBR, btnBL, colBorderHi)
+				rl.DrawLine3D(btnTL, btnTR, colBorderHi)
+				rl.DrawLine3D(btnTR, btnBR, colBorderHi)
+				rl.DrawLine3D(btnBR, btnBL, colBorderHi)
+				rl.DrawLine3D(btnBL, btnTL, colBorderHi)
 
-				// Draw label text centered on button (screen-space for readability)
-				screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
 				if el.Label != "" {
+					screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
+					// GetWorldToScreen may return Y from bottom; flip to top-origin for drawText
+					screenPos.Y = float32(rl.GetScreenHeight()) - screenPos.Y
 					tw := g.textWidth(el.Label, el.TextSize)
-					g.drawText(el.Label, screenPos.X-tw/2, screenPos.Y-el.TextSize/2, el.TextSize, el.TextColor)
+					th := el.TextSize
+					g.drawText(el.Label, screenPos.X-tw/2, screenPos.Y-th/2, el.TextSize, el.TextColor)
 				}
 			} else if el.Kind == "text" {
 				screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
+				screenPos.Y = float32(rl.GetScreenHeight()) - screenPos.Y
 				if el.Label != "" {
 					g.drawText(el.Label, screenPos.X-g.textWidth(el.Label, el.TextSize)/2, screenPos.Y-el.TextSize/2, el.TextSize, el.TextColor)
 				}

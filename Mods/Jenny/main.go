@@ -159,8 +159,8 @@ func buildBillboard() {
 	panelID = 0
 	btnIDs = nil
 
-	// Panel floats 1 meter to the right of Jenny, at head height.
-	panel, err := fsbox.AddBillboardPanel(0, 3, 4, 1.6, 1.2)
+	// Build billboard panel to the right of Jenny (in world space)
+	panel, err := fsbox.AddBillboardPanel(2.5, 2.2, 4, 2.5, 1.6)
 	if err != nil {
 		fsbox.Log("[Jenny] add billboard panel failed: " + err.Error())
 		return
@@ -175,11 +175,11 @@ func buildBillboard() {
 	btnW := float32(1.3)
 	btnH := float32(0.07)
 	gap := float32(0.01)
-	startY := float32(0.3)
+	startY := float32(0.5)
 
 	for i := int32(0); i < int32(len(animations)); i++ {
 		btnY := startY - float32(i)*(btnH+gap)
-		if btnY < -0.5 {
+		if btnY < -0.55 {
 			break // don't fit more buttons
 		}
 		btn, err := fsbox.AddBillboardButton(panelID, 0, btnY, btnW, btnH, animations[i].Name, fsbox.Color{R: 40, G: 45, B: 50, A: 230})
@@ -191,14 +191,14 @@ func buildBillboard() {
 	}
 
 	// Play button at bottom left.
-	playBtn, err := fsbox.AddBillboardButton(panelID, -0.55, -0.5, 0.45, 0.06, "PLAY", fsbox.Color{R: 60, G: 120, B: 60, A: 230})
+	playBtn, err := fsbox.AddBillboardButton(panelID, -0.65, -0.55, 0.5, 0.06, "PLAY", fsbox.Color{R: 60, G: 120, B: 60, A: 230})
 	if err != nil {
 		fsbox.Log("[Jenny] add play button failed: " + err.Error())
 	}
 	playBtnID = playBtn
 
 	// Stop button at bottom right.
-	stopBtn, err := fsbox.AddBillboardButton(panelID, 0.55, -0.5, 0.45, 0.06, "STOP", fsbox.Color{R: 160, G: 60, B: 60, A: 230})
+	stopBtn, err := fsbox.AddBillboardButton(panelID, 0.65, -0.55, 0.5, 0.06, "STOP", fsbox.Color{R: 160, G: 60, B: 60, A: 230})
 	if err != nil {
 		fsbox.Log("[Jenny] add stop button failed: " + err.Error())
 	}
