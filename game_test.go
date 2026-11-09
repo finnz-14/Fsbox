@@ -22,6 +22,7 @@ func newHeadlessGame(t *testing.T) *Game {
 		state:    statePlaying,
 		settings: defaultSettings(),
 	}
+	loadContentSpawnables()
 	g.player = newPlayer(g.world, defaultSpawn, 0, -0.12, false)
 	g.buildArena()
 	g.buildStarterProps()

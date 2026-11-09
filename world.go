@@ -335,48 +335,7 @@ func absf(v float32) float32 {
 	return v
 }
 
-var presets = []ShapePreset{
-	{
-		Name: "Crate", Kind: PropBox, Half: bv(0.5, 0.5, 0.5),
-		Density: 150, Friction: 0.62, Restitution: 0.03, Color: colCrate,
-	},
-	{
-		Name: "Ball", Kind: PropSphere, Radius: 0.5,
-		Density: 240, Friction: 0.38, Restitution: 0.34, Color: colBall,
-	},
-	{
-		Name: "Barrel", Kind: PropCylinder, Radius: 0.46, Height: 1.2,
-		Density: 130, Friction: 0.55, Restitution: 0.05, Color: colBarrel,
-	},
-	{
-		Name: "Slab", Kind: PropBox, Half: bv(1.15, 0.18, 0.62),
-		Density: 170, Friction: 0.60, Restitution: 0.04, Color: colSlab,
-	},
-	{
-		Name: "Anvil", Kind: PropBox, Half: bv(0.46, 0.44, 0.64),
-		Density: 950, Friction: 0.70, Restitution: 0.02, Color: colAnvil,
-	},
-	{
-		Name: "Block", Kind: PropBox, Half: bv(1.0, 1.0, 1.0),
-		Density: 140, Friction: 0.64, Restitution: 0.03, Color: colCrate3,
-	},
-	{
-		Name: "Pebble", Kind: PropSphere, Radius: 0.27,
-		Density: 520, Friction: 0.42, Restitution: 0.28, Color: colCrate2,
-	},
-	{
-		Name: "Boulder", Kind: PropSphere, Radius: 0.95,
-		Density: 210, Friction: 0.50, Restitution: 0.18, Color: colBoulder,
-	},
-	{
-		Name: "Plank", Kind: PropBox, Half: bv(0.14, 0.14, 1.7),
-		Density: 120, Friction: 0.55, Restitution: 0.04, Color: colSlab,
-	},
-	{
-		Name: "Column", Kind: PropCylinder, Radius: 0.32, Height: 2.6,
-		Density: 220, Friction: 0.62, Restitution: 0.02, Color: colPlatform,
-	},
-}
+var presets []ShapePreset
 
 var defaultSpawn = bp(0, 2.2, 12)
 
@@ -762,6 +721,9 @@ func (g *Game) buildArena() {
 }
 
 func (g *Game) buildStarterProps() {
+	if len(presets) < 5 {
+		return
+	}
 	crate := presets[0]
 	ball := presets[1]
 	barrel := presets[2]

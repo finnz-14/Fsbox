@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -41,6 +42,9 @@ type contentManifest struct {
 	Color       []int
 	Half        []float32
 }
+
+//go:embed Content/Spawnables/*.json
+var embeddedSpawnables embed.FS
 
 var contentLoaded bool
 var missingTexture rl.Texture2D
@@ -123,15 +127,19 @@ func loadContentSpawnables() {
 	initMissingTexture()
 
 	before := len(presets)
-	dir, candidates := findContentSpawnablesDir()
+	dir, _ := findContentSpawnablesDir()
 	if dir == "" {
-		fmt.Println("[content] WARNING: no Content/Spawnables folder found; only built-in props will be available")
-		fmt.Printf("[content] checked: %v\n", candidates)
+		fmt.Println("[content] WARNING: no Content/Spawnables folder found on disk; using embedded defaults")
+		loadEmbeddedSpawnables()
+		sortPresets()
+		rebuildSpawnCategories()
+		fmt.Printf("[content] done: %d presets (embedded defaults), categories=%v\n", len(presets), spawnCategories)
 		return
 	}
 
 	loadLooseJSONSpawnables(dir)
 	loadFolderSpawnables(dir)
+	sortPresets()
 	rebuildSpawnCategories()
 
 	fmt.Printf("[content] done: %d presets (%d built-in + %d content), categories=%v\n",
@@ -220,6 +228,85 @@ func loadLooseJSONSpawnables(dir string) {
 		}
 		presets = append(presets, p)
 		fmt.Printf("[content] legacy JSON spawnable: %q category=%s\n", p.Name, p.Category)
+	}
+}
+
+// loadEmbeddedSpawnables loads the default spawnables embedded in the binary.
+// This keeps tests and headless runs working even when the working directory
+// does not contain a Content/Spawnables folder.
+func loadEmbeddedSpawnables() {
+	entries, err := embeddedSpawnables.ReadDir("Content/Spawnables")
+	if err != nil {
+		fmt.Printf("[content] embedded read failed: %v\n", err)
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
+			continue
+		}
+		data, err := embeddedSpawnables.ReadFile("Content/Spawnables/" + e.Name())
+		if err != nil {
+			continue
+		}
+		var cs contentSpawnable
+		if err := json.Unmarshal(data, &cs); err != nil {
+			continue
+		}
+		if cs.Name == "" {
+			cs.Name = strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+		}
+		p := ShapePreset{Name: cs.Name, Density: cs.Density, Friction: cs.Friction, Restitution: cs.Restitution}
+		switch strings.ToLower(cs.Kind) {
+		case "sphere", "ball":
+			p.Kind = PropSphere
+			if cs.Radius <= 0 {
+				cs.Radius = 0.5
+			}
+			p.Radius = cs.Radius
+		case "cylinder", "barrel":
+			p.Kind = PropCylinder
+			if cs.Radius <= 0 {
+				cs.Radius = 0.4
+			}
+			if cs.Height <= 0 {
+				cs.Height = 1.0
+			}
+			p.Radius = cs.Radius
+			p.Height = cs.Height
+		default:
+			p.Kind = PropBox
+			hx, hy, hz := float32(0.5), float32(0.5), float32(0.5)
+			if len(cs.Half) >= 1 {
+				hx = cs.Half[0]
+			}
+			if len(cs.Half) >= 2 {
+				hy = cs.Half[1]
+			}
+			if len(cs.Half) >= 3 {
+				hz = cs.Half[2]
+			}
+			p.Half = bv(hx, hy, hz)
+		}
+		if len(cs.Color) >= 3 {
+			p.Color = rl.NewColor(uint8(cs.Color[0]), uint8(cs.Color[1]), uint8(cs.Color[2]), 255)
+		} else {
+			p.Color = rl.Gray
+		}
+		if p.Density <= 0 {
+			p.Density = 150
+		}
+		if p.Friction <= 0 {
+			p.Friction = 0.6
+		}
+		if cs.Category != "" {
+			p.Category = strings.ToUpper(cs.Category)
+		} else {
+			p.Category = "MISC"
+		}
+		presets = append(presets, p)
 	}
 }
 
@@ -851,6 +938,23 @@ func applyMissingTexture(model *rl.Model) {
 			diffuse.Texture = missingTexture
 		}
 	}
+}
+
+func presetOrder(name string) int {
+	order := map[string]int{
+		"Crate": 0, "Ball": 1, "Barrel": 2, "Slab": 3, "Anvil": 4,
+		"Block": 5, "Pebble": 6, "Boulder": 7, "Plank": 8, "Column": 9,
+	}
+	if v, ok := order[name]; ok {
+		return v
+	}
+	return 1000 + len(name)
+}
+
+func sortPresets() {
+	sort.SliceStable(presets, func(i, j int) bool {
+		return presetOrder(presets[i].Name) < presetOrder(presets[j].Name)
+	})
 }
 
 func rebuildSpawnCategories() {
