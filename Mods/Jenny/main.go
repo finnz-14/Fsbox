@@ -85,12 +85,10 @@ func init() {
 
 				if dist < 6.0 && dot > 0.5 && !guiOpen {
 					guiOpen = true
-					fsbox.SetCursorLocked(false)
 					fsbox.Toast("Jenny GUI - use hand tool to click", fsbox.Color{R: 230, G: 166, B: 66, A: 255})
-					buildBillboard()
+					buildBillboard(jennyPos)
 				} else if (dist > 7.0 || dot < 0.3) && guiOpen {
 					guiOpen = false
-					fsbox.SetCursorLocked(true)
 					fsbox.ClearBillboardPanels()
 					panelID = 0
 					btnIDs = nil
@@ -104,11 +102,12 @@ func init() {
 		if pressed {
 			guiOpen = !guiOpen
 			if guiOpen {
-				fsbox.SetCursorLocked(false)
 				fsbox.Toast("Jenny GUI - use hand tool to click", fsbox.Color{R: 230, G: 166, B: 66, A: 255})
-				buildBillboard()
+				// Get current Jenny position for panel placement
+				if ent, err := fsbox.GetEntity(jennyEntity); err == nil {
+					buildBillboard(ent.Position)
+				}
 			} else {
-				fsbox.SetCursorLocked(true)
 				fsbox.ClearBillboardPanels()
 				panelID = 0
 				btnIDs = nil
@@ -123,6 +122,7 @@ func init() {
 			return
 		}
 
+		// Only handle billboard button clicks
 		if d.Kind != "billboard_button" {
 			return
 		}
@@ -156,13 +156,17 @@ func init() {
 }
 
 // buildBillboard creates the 3D billboard panel floating beside Jenny.
-func buildBillboard() {
+func buildBillboard(jennyPos fsbox.Vec3) {
 	fsbox.ClearBillboardPanels()
 	panelID = 0
 	btnIDs = nil
 
-	// Panel floats 2m to Jenny's right and 1m above her head.
-	panel, err := fsbox.AddBillboardPanel(2.5, 3.0, 4.0, 3.0, 2.2)
+	// Panel floats 2m to Jenny's right, at head height (y + 1.5).
+	px := jennyPos.X + 2.0
+	py := jennyPos.Y + 1.5
+	pz := jennyPos.Z
+
+	panel, err := fsbox.AddBillboardPanel(px, py, pz, 2.5, 1.6)
 	if err != nil {
 		fsbox.Log("[Jenny] add billboard panel failed: " + err.Error())
 		return
