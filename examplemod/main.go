@@ -6,7 +6,7 @@ import (
 	fsbox "fsbox.dev/sdk"
 )
 
-//export mod_init
+//go:wasmexport mod_init
 func modInit() {
 	fmt.Println("[examplemod] init")
 	raw, err := fsbox.Call("entity.spawn", map[string]any{
@@ -20,7 +20,7 @@ func modInit() {
 	fmt.Printf("[examplemod] engine info: %s err=%v\n", string(info), err)
 }
 
-//export mod_update
+//go:wasmexport mod_update
 func modUpdate() {}
 
 //export mod_event

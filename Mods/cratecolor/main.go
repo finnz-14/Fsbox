@@ -2,15 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"math/rand"
 	"unsafe"
 
 	fsbox "fsbox.dev/sdk"
 )
 
-//export mod_init
+//go:wasmexport mod_init
 func modInit() {}
 
-//export mod_event
+//go:wasmexport mod_event
 func modEvent(ptr, size uint32) {
 	if size == 0 {
 		return
@@ -40,14 +41,25 @@ func modEvent(ptr, size uint32) {
 	if data.Kind != "box" {
 		return
 	}
-	// Change to a bright red.
-	_, _ = fsbox.Call("entity.set_color", map[string]any{
+	// Change to a random color.
+	r := uint8(rand.Intn(200) + 55)
+	g := uint8(rand.Intn(200) + 55)
+	b := uint8(rand.Intn(200) + 55)
+	raw, err := fsbox.Call("entity.set_color", map[string]any{
 		"id":    data.ID,
-		"color": map[string]any{"r": 220, "g": 60, "b": 60, "a": 255},
+		"color": map[string]any{"r": r, "g": g, "b": b, "a": 255},
 	})
+	_, _ = fsbox.Call("engine.log", map[string]any{"message": "set_color result: " + string(raw) + " err=" + errStr(err)})
 }
 
-//export mod_update
+//go:wasmexport mod_update
 func modUpdate() {}
+
+func errStr(err error) string {
+	if err == nil {
+		return "<nil>"
+	}
+	return err.Error()
+}
 
 func main() {}

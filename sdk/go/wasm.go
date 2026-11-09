@@ -51,13 +51,11 @@ func Call(cmd string, args any) (json.RawMessage, error) {
 
 // Exported helpers so the engine can push events and allocate memory.
 //
-//go:export mod_alloc
+//go:wasmexport mod_alloc
 func ModAlloc(size uint32) uint32 { return respPtr() }
 
-//go:export mod_scratch
+//go:wasmexport mod_scratch
 func ModScratch(size uint32) uint32 { return respPtr() }
 
-//go:export mod_event
-func ModEvent(ptr, size uint32) {
-	// Default no-op; mods can override by not using the SDK event dispatcher.
-}
+// ModEvent is intentionally not exported by the SDK; mods implement their own
+// //go:wasmexport mod_event when they want to receive events.
