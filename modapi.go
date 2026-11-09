@@ -1891,7 +1891,7 @@ func (g *Game) engineInfo() EngineInfo {
 	}
 	return EngineInfo{
 		Game:        "fsbox",
-		Version:     "0.3.0",
+		Version:     GameVersion,
 		APIVersion:  ModAPIVersion,
 		Time:        g.time,
 		Frame:       g.frame,

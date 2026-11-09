@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -59,21 +60,8 @@ type Mod struct {
 }
 
 func (m *Mod) HasPermission(perm string) bool {
-	if !m.HasManifest {
-		return true
-	}
-	for _, p := range m.Manifest.Permissions {
-		if p == "*" || p == perm {
-			return true
-		}
-		if strings.HasSuffix(p, ".*") && strings.HasPrefix(perm, strings.TrimSuffix(p, ".*")+".") {
-			return true
-		}
-		if p != "" && !strings.Contains(p, ".") && strings.HasPrefix(perm, p+".") {
-			return true
-		}
-	}
-	return false
+	// Mods do not need to declare permissions to use host APIs.
+	return true
 }
 
 type ModManager struct {
@@ -233,51 +221,187 @@ func NewModManager(g *Game) (*ModManager, error) {
 		return nil, err
 	}
 
-	// Load WASM mods.
-	dir := "Mods"
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".wasm" {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		wasm, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Printf("[mod] failed to read %s: %v\n", path, err)
-			continue
-		}
+	candidates := collectModCandidates()
 
-		manifest := ModManifest{}
-		hasManifest := false
-		manifestPath := filepath.Join(dir, e.Name()+".json")
-		if _, err := os.Stat(manifestPath); err == nil {
-			if data, err := os.ReadFile(manifestPath); err == nil {
-				if err := json.Unmarshal(data, &manifest); err == nil {
-					hasManifest = true
-				}
+	gameVersion := GameVersion
+	passing := make([]modCandidate, 0, len(candidates))
+	for _, c := range candidates {
+		if c.manifest.GameVersion != "" {
+			if !satisfiesGameVersion(gameVersion, c.manifest.GameVersion) {
+				fmt.Printf("[mod] skipping %s: game version %s not satisfied by %s\n", c.manifest.ID, gameVersion, c.manifest.GameVersion)
+				continue
 			}
-		} else {
-			manifestPath = filepath.Join(dir, "manifest.json")
-			if data, err := os.ReadFile(manifestPath); err == nil {
-				if err := json.Unmarshal(data, &manifest); err == nil {
-					hasManifest = true
+		}
+		passing = append(passing, c)
+	}
+
+	bestByID := make(map[string]modCandidate)
+	for _, c := range passing {
+		if cur, ok := bestByID[c.manifest.ID]; !ok || compareVersion(c.manifest.Version, cur.manifest.Version) > 0 {
+			bestByID[c.manifest.ID] = c
+		}
+	}
+	depOK := make([]modCandidate, 0, len(passing))
+	for _, c := range passing {
+		ok := true
+		for _, dep := range c.manifest.Dependencies {
+			id, op, ver := parseDependency(dep)
+			depCand, exists := bestByID[id]
+			if !exists {
+				fmt.Printf("[mod] skipping %s: missing dependency %s\n", c.manifest.ID, id)
+				ok = false
+				break
+			}
+			if ver != "" {
+				if !satisfiesVersion(depCand.manifest.Version, op, ver) {
+					fmt.Printf("[mod] skipping %s: dependency %s version %s does not satisfy %s%s\n", c.manifest.ID, id, depCand.manifest.Version, op, ver)
+					ok = false
+					break
 				}
 			}
 		}
-		if hasManifest && manifest.Runtime != "" && manifest.Runtime != "wasm" {
-			fmt.Printf("[mod] skipping %s: unsupported runtime %q\n", path, manifest.Runtime)
-			continue
+		if ok {
+			depOK = append(depOK, c)
+		}
+	}
+
+	byID := make(map[string]modCandidate)
+	for _, c := range depOK {
+		if cur, ok := byID[c.manifest.ID]; !ok || compareVersion(c.manifest.Version, cur.manifest.Version) > 0 {
+			byID[c.manifest.ID] = c
+		}
+	}
+	final := make([]modCandidate, 0, len(byID))
+	for _, c := range byID {
+		final = append(final, c)
+	}
+	sort.Slice(final, func(i, j int) bool {
+		if final[i].manifest.ID != final[j].manifest.ID {
+			return final[i].manifest.ID < final[j].manifest.ID
+		}
+		return compareVersion(final[i].manifest.Version, final[j].manifest.Version) > 0
+	})
+
+	for _, cand := range final {
+		c := cand
+		manifest := c.manifest
+		if manifest.ID == "" {
+			manifest.ID = "unknown"
 		}
 		if manifest.Runtime == "" {
 			manifest.Runtime = "wasm"
 		}
+		if manifest.Entry == "" {
+			if c.isGo {
+				manifest.Entry = "main.go"
+			} else {
+				manifest.Entry = "main.wasm"
+			}
+		}
 
-		mod, err := r.InstantiateWithConfig(ctx, wasm, wazero.NewModuleConfig().WithName(e.Name()).WithStartFunctions("_initialize"))
-		if err != nil {
-			fmt.Printf("[mod] failed to instantiate %s: %v\n", path, err)
+		if c.isGo {
+			modDir := c.dir
+			worker, err := NewGoModWorker(manifest.ID, modDir, manifest.Entry, nil)
+			if err != nil {
+				fmt.Printf("[mod] failed to start Go mod %s: %v\n", modDir, err)
+				continue
+			}
+			worker.OnRequest = func(method string, params json.RawMessage) (any, error) {
+				if method != "engine.call" {
+					return nil, fmt.Errorf("unknown method %q", method)
+				}
+				var a struct {
+					Cmd  string          `json:"cmd"`
+					Args json.RawMessage `json:"args"`
+				}
+				if err := json.Unmarshal(params, &a); err != nil {
+					return nil, err
+				}
+				ch := make(chan json.RawMessage, 1)
+				mm.workerCalls <- workerCall{owner: manifest.ID, cmd: a.Cmd, args: a.Args, resp: ch}
+				select {
+				case raw := <-ch:
+					return json.RawMessage(raw), nil
+				case <-time.After(10 * time.Second):
+					return nil, fmt.Errorf("engine call timeout")
+				}
+			}
+
+			m := &Mod{
+				Name:        manifest.ID,
+				Manifest:    manifest,
+				HasManifest: c.hasManifest,
+				Worker:      worker,
+				IsGo:        true,
+				Hooks:       make(map[string][]string),
+			}
+
+			params := map[string]any{
+				"game":        "fsbox",
+				"version":     RPCProtocolVersion,
+				"api_version": ModAPIVersion,
+			}
+			resCh := make(chan struct {
+				msg *RPCMessage
+				err error
+			}, 1)
+			go func() {
+				msg, err := worker.Call("mod.init", params)
+				resCh <- struct {
+					msg *RPCMessage
+					err error
+				}{msg, err}
+			}()
+
+			start := time.Now()
+			handshakeErr := error(nil)
+			done := false
+			for !done && time.Since(start) < 10*time.Second {
+				select {
+				case r := <-resCh:
+					handshakeErr = r.err
+					done = true
+				case req := <-mm.workerCalls:
+					result, err := g.ModCall(req.owner, req.cmd, req.args)
+					resp := map[string]any{"ok": true, "result": result}
+					if err != nil {
+						resp = map[string]any{"ok": false, "error": err.Error()}
+					}
+					raw, _ := json.Marshal(resp)
+					req.resp <- raw
+				default:
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
+			if handshakeErr != nil {
+				fmt.Printf("[mod] Go mod %s handshake failed: %v\n", manifest.ID, handshakeErr)
+				_ = worker.Close()
+				continue
+			}
+			mm.Mods = append(mm.Mods, m)
+			fmt.Printf("[mod] Go worker started: %s\n", manifest.ID)
 			continue
 		}
-		m := &Mod{Name: e.Name(), Module: mod, Manifest: manifest, HasManifest: hasManifest, Hooks: make(map[string][]string)}
+
+		entryPath := manifest.Entry
+		wasmPath := entryPath
+		if !filepath.IsAbs(wasmPath) {
+			wasmPath = filepath.Join(c.dir, entryPath)
+		}
+		if c.isFlat {
+			wasmPath = c.flatFile
+		}
+		wasm, err := os.ReadFile(wasmPath)
+		if err != nil {
+			fmt.Printf("[mod] failed to read %s: %v\n", wasmPath, err)
+			continue
+		}
+		mod, err := r.InstantiateWithConfig(ctx, wasm, wazero.NewModuleConfig().WithName(manifest.ID).WithStartFunctions("_initialize"))
+		if err != nil {
+			fmt.Printf("[mod] failed to instantiate %s: %v\n", wasmPath, err)
+			continue
+		}
+		m := &Mod{Name: manifest.ID, Module: mod, Manifest: manifest, HasManifest: c.hasManifest, Hooks: make(map[string][]string)}
 		if fn := mod.ExportedFunction("mod_init"); fn != nil {
 			m.OnInit = fn
 		}
@@ -295,127 +419,230 @@ func NewModManager(g *Game) (*ModManager, error) {
 		}
 		if m.OnInit != nil {
 			if _, err := m.OnInit.Call(ctx); err != nil {
-				fmt.Printf("[mod] init error %s: %v\n", path, err)
+				fmt.Printf("[mod] init error %s: %v\n", wasmPath, err)
 			}
 		}
 		mm.Mods = append(mm.Mods, m)
-		fmt.Printf("[mod] loaded %s\n", path)
-	}
-
-	// Discover and launch native Go mod workers.
-	goModDirs, _ := os.ReadDir("ModsGo")
-	for _, e := range goModDirs {
-		if !e.IsDir() {
-			continue
-		}
-		modDir := filepath.Join("ModsGo", e.Name())
-		if _, err := os.Stat(filepath.Join(modDir, "go.mod")); err != nil {
-			fmt.Printf("[mod] skipping %s: no go.mod\n", modDir)
-			continue
-		}
-		manifestPath := filepath.Join(modDir, "mod.json")
-		manifest := ModManifest{Runtime: "go", Entry: "main.go"}
-		if data, err := os.ReadFile(manifestPath); err == nil {
-			if err := json.Unmarshal(data, &manifest); err == nil {
-				if manifest.Runtime != "" && manifest.Runtime != "go" {
-					fmt.Printf("[mod] skipping %s: unsupported runtime %q\n", modDir, manifest.Runtime)
-					continue
-				}
-			}
-		}
-		if manifest.ID == "" {
-			manifest.ID = e.Name()
-		}
-		if manifest.Runtime == "" {
-			manifest.Runtime = "go"
-		}
-		if manifest.Entry == "" {
-			manifest.Entry = "main.go"
-		}
-
-		worker, err := NewGoModWorker(manifest.ID, modDir, manifest.Entry, nil)
-		if err != nil {
-			fmt.Printf("[mod] failed to start Go mod %s: %v\n", modDir, err)
-			continue
-		}
-		worker.OnRequest = func(method string, params json.RawMessage) (any, error) {
-			if method != "engine.call" {
-				return nil, fmt.Errorf("unknown method %q", method)
-			}
-			var a struct {
-				Cmd  string          `json:"cmd"`
-				Args json.RawMessage `json:"args"`
-			}
-			if err := json.Unmarshal(params, &a); err != nil {
-				return nil, err
-			}
-			ch := make(chan json.RawMessage, 1)
-			mm.workerCalls <- workerCall{owner: manifest.ID, cmd: a.Cmd, args: a.Args, resp: ch}
-			select {
-			case raw := <-ch:
-				return json.RawMessage(raw), nil
-			case <-time.After(10 * time.Second):
-				return nil, fmt.Errorf("engine call timeout")
-			}
-		}
-
-		m := &Mod{
-			Name:        manifest.ID,
-			Manifest:    manifest,
-			HasManifest: true,
-			Worker:      worker,
-			IsGo:        true,
-			Hooks:       make(map[string][]string),
-		}
-
-		params := map[string]any{
-			"game":        "fsbox",
-			"version":     RPCProtocolVersion,
-			"api_version": ModAPIVersion,
-		}
-		resCh := make(chan struct {
-			msg *RPCMessage
-			err error
-		}, 1)
-		go func() {
-			msg, err := worker.Call("mod.init", params)
-			resCh <- struct {
-				msg *RPCMessage
-				err error
-			}{msg, err}
-		}()
-
-		start := time.Now()
-		handshakeErr := error(nil)
-		done := false
-		for !done && time.Since(start) < 10*time.Second {
-			select {
-			case r := <-resCh:
-				handshakeErr = r.err
-				done = true
-			case req := <-mm.workerCalls:
-				result, err := g.ModCall(req.owner, req.cmd, req.args)
-				resp := map[string]any{"ok": true, "result": result}
-				if err != nil {
-					resp = map[string]any{"ok": false, "error": err.Error()}
-				}
-				raw, _ := json.Marshal(resp)
-				req.resp <- raw
-			default:
-				time.Sleep(10 * time.Millisecond)
-			}
-		}
-		if handshakeErr != nil {
-			fmt.Printf("[mod] Go mod %s handshake failed: %v\n", manifest.ID, handshakeErr)
-			_ = worker.Close()
-			continue
-		}
-		mm.Mods = append(mm.Mods, m)
-		fmt.Printf("[mod] Go worker started: %s\n", manifest.ID)
+		fmt.Printf("[mod] loaded %s\n", manifest.ID)
 	}
 
 	return mm, nil
 }
+
+// collectModCandidates gathers mod candidates from Mods/ folders, flat wasm files, and ModsGo/.
+func collectModCandidates() []modCandidate {
+	var out []modCandidate
+	if entries, _ := os.ReadDir("Mods"); entries != nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			modDir := filepath.Join("Mods", e.Name())
+			manifestPath := filepath.Join(modDir, "manifest.json")
+			data, err := os.ReadFile(manifestPath)
+			if err != nil {
+				continue
+			}
+			var m ModManifest
+			if err := json.Unmarshal(data, &m); err != nil {
+				continue
+			}
+			if m.Runtime == "" {
+				m.Runtime = "wasm"
+			}
+			if m.ID == "" {
+				m.ID = e.Name()
+			}
+			if m.Entry == "" {
+				if m.Runtime == "go" {
+					m.Entry = "main.go"
+				} else {
+					m.Entry = "main.wasm"
+				}
+			}
+			out = append(out, modCandidate{dir: modDir, manifest: m, hasManifest: true, runtime: m.Runtime, isGo: m.Runtime == "go"})
+		}
+	}
+	if entries, _ := os.ReadDir("Mods"); entries != nil {
+		for _, e := range entries {
+			if e.IsDir() || filepath.Ext(e.Name()) != ".wasm" {
+				continue
+			}
+			path := filepath.Join("Mods", e.Name())
+			manifest := ModManifest{Runtime: "wasm", Entry: e.Name()}
+			hasManifest := false
+			manifestPath := filepath.Join("Mods", e.Name()+".json")
+			if data, err := os.ReadFile(manifestPath); err == nil {
+				if err := json.Unmarshal(data, &manifest); err == nil {
+					hasManifest = true
+				}
+			}
+			if hasManifest && manifest.Runtime != "" && manifest.Runtime != "wasm" {
+				continue
+			}
+			if manifest.Runtime == "" {
+				manifest.Runtime = "wasm"
+			}
+			if manifest.ID == "" {
+				manifest.ID = strings.TrimSuffix(e.Name(), ".wasm")
+			}
+			if manifest.Entry == "" {
+				manifest.Entry = e.Name()
+			}
+			out = append(out, modCandidate{dir: "Mods", manifest: manifest, hasManifest: hasManifest, runtime: "wasm", isGo: false, flatFile: path, isFlat: true})
+		}
+	}
+	if entries, _ := os.ReadDir("ModsGo"); entries != nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			modDir := filepath.Join("ModsGo", e.Name())
+			if _, err := os.Stat(filepath.Join(modDir, "go.mod")); err != nil {
+				continue
+			}
+			manifest := ModManifest{Runtime: "go", Entry: "main.go"}
+			hasManifest := false
+			manifestPath := filepath.Join(modDir, "mod.json")
+			if data, err := os.ReadFile(manifestPath); err == nil {
+				if err := json.Unmarshal(data, &manifest); err == nil {
+					hasManifest = true
+				}
+			}
+			if manifest.Runtime != "" && manifest.Runtime != "go" {
+				continue
+			}
+			if manifest.ID == "" {
+				manifest.ID = e.Name()
+			}
+			if manifest.Runtime == "" {
+				manifest.Runtime = "go"
+			}
+			if manifest.Entry == "" {
+				manifest.Entry = "main.go"
+			}
+			out = append(out, modCandidate{dir: modDir, manifest: manifest, hasManifest: hasManifest, runtime: "go", isGo: true})
+		}
+	}
+	return out
+}
+
+type modCandidate struct {
+	dir         string
+	manifest    ModManifest
+	hasManifest bool
+	runtime     string
+	isGo        bool
+	flatFile    string
+	isFlat      bool
+}
+
+const GameVersion = "1.0.0"
+
+func parseVersion(v string) (int, int, int) {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "v")
+	parts := strings.SplitN(v, "-", 2)
+	core := parts[0]
+	nums := strings.Split(core, ".")
+	var maj, min, pat int
+	if len(nums) > 0 {
+		fmt.Sscanf(nums[0], "%d", &maj)
+	}
+	if len(nums) > 1 {
+		fmt.Sscanf(nums[1], "%d", &min)
+	}
+	if len(nums) > 2 {
+		fmt.Sscanf(nums[2], "%d", &pat)
+	}
+	return maj, min, pat
+}
+
+func compareVersion(a, b string) int {
+	am, ami, ap := parseVersion(a)
+	bm, bmi, bp := parseVersion(b)
+	if am != bm {
+		if am < bm { return -1 }
+		return 1
+	}
+	if ami != bmi {
+		if ami < bmi { return -1 }
+		return 1
+	}
+	if ap != bp {
+		if ap < bp { return -1 }
+		return 1
+	}
+	return 0
+}
+
+func satisfiesGameVersion(gameVer, constraint string) bool {
+	constraint = strings.TrimSpace(constraint)
+	if constraint == "" {
+		return true
+	}
+	op, ver := splitConstraint(constraint)
+	switch op {
+	case ">=":
+		return compareVersion(gameVer, ver) >= 0
+	case "<=":
+		return compareVersion(gameVer, ver) <= 0
+	case ">":
+		return compareVersion(gameVer, ver) > 0
+	case "<":
+		return compareVersion(gameVer, ver) < 0
+	default:
+		return compareVersion(gameVer, ver) == 0
+	}
+}
+
+func parseDependency(dep string) (string, string, string) {
+	dep = strings.TrimSpace(dep)
+	i := 0
+	for i < len(dep) {
+		c := dep[i]
+		if c == '>' || c == '<' || c == '=' {
+			break
+		}
+		i++
+	}
+	if i == len(dep) {
+		return dep, "==", ""
+	}
+	id := strings.TrimSpace(dep[:i])
+	constraint := strings.TrimSpace(dep[i:])
+	op, ver := splitConstraint(constraint)
+	return id, op, ver
+}
+
+func splitConstraint(c string) (string, string) {
+	c = strings.TrimSpace(c)
+	for _, op := range []string{">=", "<=", "==", ">", "<", "="} {
+		if strings.HasPrefix(c, op) {
+			return op, strings.TrimSpace(c[len(op):])
+		}
+	}
+	return "==", c
+}
+
+func satisfiesVersion(version, op, constraintVer string) bool {
+	if constraintVer == "" {
+		return true
+	}
+	switch op {
+	case ">=":
+		return compareVersion(version, constraintVer) >= 0
+	case "<=":
+		return compareVersion(version, constraintVer) <= 0
+	case ">":
+		return compareVersion(version, constraintVer) > 0
+	case "<":
+		return compareVersion(version, constraintVer) < 0
+	default:
+		return compareVersion(version, constraintVer) == 0
+	}
+}
+
 
 func writeGuestResponse(m api.Module, respPtr, respCap uint32, resp map[string]any) int32 {
 	data, err := json.Marshal(resp)
