@@ -227,9 +227,6 @@ type Game struct {
 	// Mod hooks that should run during the HUD phase.
 	modHUDHooks []string
 
-	// Entity whose animation GUI is currently shown (set by proximity).
-	animGUIEntity int32
-
 	// Frame counter and simulation time scale.
 	frame     int64
 	timeScale float64
@@ -561,7 +558,6 @@ func (g *Game) Update(dt float64) {
 		g.updateWaves(float32(simDt))
 		g.updateModParticles(float32(simDt))
 		g.updateMusic()
-		g.updateAnimationProximity()
 		g.updateAnimations(float32(simDt))
 		if g.shake > 0 {
 			g.shake -= simDt
