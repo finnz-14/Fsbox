@@ -82,6 +82,9 @@ func (g *Game) saveGame() {
 	}
 
 	for _, e := range g.props {
+		if e.Transient {
+			continue
+		}
 		bp := e.Body.GetPosition()
 		q := e.Body.GetRotation()
 		ps := propSave{

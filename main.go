@@ -29,6 +29,7 @@ func run() int {
 	rl.SetTraceLogLevel(rl.LogWarning)
 	rl.SetConfigFlags(rl.FlagWindowResizable | rl.FlagMsaa4xHint)
 	rl.InitWindow(screenWidth, screenHeight, "FSBOX // 3D physics sandbox")
+	rl.InitAudioDevice()
 	defer rl.CloseWindow()
 	if _, err := os.Stat("fsbox.png"); err == nil {
 		if icon := rl.LoadImage("fsbox.png"); icon != nil {

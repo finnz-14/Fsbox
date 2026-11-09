@@ -11,24 +11,29 @@ import (
 // describes what it is allowed to touch. Queries use their own category so the
 // player can never be hit by the placement/grab rays.
 const (
-	catStatic uint64 = 1 << 0
-	catProp   uint64 = 1 << 1
-	catPlayer uint64 = 1 << 2
-	catQuery  uint64 = 1 << 3
+	catStatic     uint64 = 1 << 0
+	catProp       uint64 = 1 << 1
+	catPlayer     uint64 = 1 << 2
+	catQuery      uint64 = 1 << 3
+	catProjectile uint64 = 1 << 4
 
 	maxProps = 220
 )
 
 func staticFilter() box3d.Filter {
-	return box3d.Filter{CategoryBits: catStatic, MaskBits: catStatic | catProp | catPlayer | catQuery}
+	return box3d.Filter{CategoryBits: catStatic, MaskBits: catStatic | catProp | catPlayer | catQuery | catProjectile}
 }
 
 func propFilter() box3d.Filter {
-	return box3d.Filter{CategoryBits: catProp, MaskBits: catStatic | catProp | catPlayer | catQuery}
+	return box3d.Filter{CategoryBits: catProp, MaskBits: catStatic | catProp | catPlayer | catQuery | catProjectile}
 }
 
 func playerFilter() box3d.Filter {
-	return box3d.Filter{CategoryBits: catPlayer, MaskBits: catStatic | catProp}
+	return box3d.Filter{CategoryBits: catPlayer, MaskBits: catStatic | catProp | catProjectile}
+}
+
+func projectileFilter() box3d.Filter {
+	return box3d.Filter{CategoryBits: catProjectile, MaskBits: catStatic | catProp | catPlayer}
 }
 
 func queryFilter(mask uint64) box3d.QueryFilter {
@@ -240,6 +245,7 @@ func propKindFromString(s string) (PropKind, bool) {
 // Entity is one renderable rigid body. Static arena geometry and dynamic props
 // share this type; only dynamic entities are saved and targetable.
 type Entity struct {
+	ID          int32
 	Body        box3d.BodyID
 	Kind        PropKind
 	Half        box3d.Vec3
@@ -250,6 +256,10 @@ type Entity struct {
 	Name        string
 	Static      bool
 	Frozen      bool
+	Invulnerable bool
+	Transient   bool
+	Health      float32
+	MaxHealth   float32
 	Density     float32
 	Friction    float32
 	Restitution float32
@@ -259,6 +269,7 @@ type Entity struct {
 	Hull        *box3d.HullData
 	Hulls       []*box3d.HullData
 	Mesh        *box3d.MeshData
+	Owner       string
 }
 
 func (e *Entity) position() rl.Vector3 {
@@ -385,10 +396,31 @@ func (g *Game) registerEntity(e *Entity) {
 	if e == nil {
 		return
 	}
+	if e.ID == 0 {
+		e.ID = g.nextEntityID
+		g.nextEntityID++
+	} else if e.ID >= g.nextEntityID {
+		g.nextEntityID = e.ID + 1
+	}
+	if !e.Static && e.MaxHealth == 0 {
+		e.MaxHealth = 100
+		e.Health = 100
+	}
+	if e.Static {
+		e.MaxHealth = 0
+		e.Health = 0
+	}
 	g.entities = append(g.entities, e)
 	g.byBody[e.Body] = e
+	if g.byID == nil {
+		g.byID = make(map[int32]*Entity)
+	}
+	g.byID[e.ID] = e
 	if !e.Static {
 		g.props = append(g.props, e)
+	}
+	if g.mods != nil && !e.Transient {
+		g.mods.FireEvent("entity.spawn", g.entityInfo(e))
 	}
 }
 
@@ -801,11 +833,16 @@ func (g *Game) resetWorld(withStarter bool, spawn box3d.Pos, yaw, pitch float32,
 	g.entities = nil
 	g.props = nil
 	g.byBody = make(map[box3d.BodyID]*Entity)
+	g.byID = make(map[int32]*Entity)
+	g.nextEntityID = 1
 	g.held = nil
 	g.aim = nil
 	g.holdDist = 0
 	g.particles = nil
 	g.waves = nil
+	g.modParticles = nil
+	g.modProjectiles = nil
+	g.modConstraints = nil
 	g.toasts = nil
 	g.shake = 0
 	g.acc = 0
@@ -818,6 +855,9 @@ func (g *Game) resetWorld(withStarter bool, spawn box3d.Pos, yaw, pitch float32,
 		g.buildStarterProps()
 	}
 	g.updateCamera()
+	if g.mods != nil {
+		g.mods.FireEvent("world.reset", map[string]any{"with_starter": withStarter})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,9 +1195,16 @@ func (g *Game) removeEntity(e *Entity) {
 	if g.aim == e {
 		g.aim = nil
 	}
+	if g.mods != nil && !e.Transient {
+		g.mods.FireEvent("entity.remove", g.entityInfo(e))
+	}
+	g.removeConstraintsForEntity(e)
 
 	e.Body.Destroy()
 	delete(g.byBody, e.Body)
+	if g.byID != nil {
+		delete(g.byID, e.ID)
+	}
 
 	for i, x := range g.entities {
 		if x == e {
@@ -1171,6 +1218,12 @@ func (g *Game) removeEntity(e *Entity) {
 				g.props = append(g.props[:i], g.props[i+1:]...)
 				break
 			}
+		}
+	}
+	for i, p := range g.modProjectiles {
+		if p.Entity == e {
+			g.modProjectiles = append(g.modProjectiles[:i], g.modProjectiles[i+1:]...)
+			break
 		}
 	}
 }
@@ -1453,4 +1506,261 @@ func (g *Game) launchAimed() {
 	), true)
 	g.burst(e.position(), colEnergy, 12, 5, 0.09)
 	g.shake = 0.12
+}
+
+// ---------------------------------------------------------------------------
+// Mod-facing entity helpers
+// ---------------------------------------------------------------------------
+
+// resolveEntity accepts a stable entity ID first, then a props index for
+// backwards compatibility with the Phase 1 API.
+func (g *Game) resolveEntity(id int32, index int32) *Entity {
+	if id != 0 && g.byID != nil {
+		if e := g.byID[id]; e != nil {
+			return e
+		}
+	}
+	if index >= 0 && int(index) < len(g.props) {
+		return g.props[index]
+	}
+	return nil
+}
+
+// resolveAnyEntity is like resolveEntity but also accepts static entities by ID.
+func (g *Game) resolveAnyEntity(id int32) *Entity {
+	if id != 0 && g.byID != nil {
+		return g.byID[id]
+	}
+	return nil
+}
+
+func (g *Game) entityInfo(e *Entity) EntityInfo {
+	if e == nil {
+		return EntityInfo{}
+	}
+	p := e.Body.GetPosition()
+	q := e.Body.GetRotation()
+	v := e.Body.GetLinearVelocity()
+	av := e.Body.GetAngularVelocity()
+	info := EntityInfo{
+		ID:           e.ID,
+		Name:         e.Name,
+		Kind:         e.Kind.String(),
+		Static:       e.Static,
+		Frozen:       e.Frozen,
+		Invulnerable: e.Invulnerable,
+		Transient:    e.Transient,
+		Health:       e.Health,
+		MaxHealth:    e.MaxHealth,
+		Position:     Vec3Info{X: p.X, Y: p.Y, Z: p.Z},
+		Rotation:     QuatInfo{X: q.V.X, Y: q.V.Y, Z: q.V.Z, W: q.S},
+		Velocity:     Vec3Info{X: v.X, Y: v.Y, Z: v.Z},
+		AngularVel:   Vec3Info{X: av.X, Y: av.Y, Z: av.Z},
+		Mass:         e.Body.GetMass(),
+		Color:        ColorInfo{R: e.Color.R, G: e.Color.G, B: e.Color.B, A: e.Color.A},
+		Half:         Vec3Info{X: e.Half.X, Y: e.Half.Y, Z: e.Half.Z},
+		Radius:       e.Radius,
+		Height:       e.Height,
+		Density:      e.Density,
+		Friction:     e.Friction,
+		Restitution:  e.Restitution,
+		Owner:        e.Owner,
+		HasModel:     e.HasModel,
+	}
+	return info
+}
+
+func (g *Game) entityIndexOf(e *Entity) int32 {
+	for i, x := range g.props {
+		if x == e {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+// damageEntity applies damage and removes the body when health reaches zero.
+func (g *Game) damageEntity(e *Entity, damage float32, point rl.Vector3) bool {
+	if e == nil || e.Static || e.Invulnerable || damage <= 0 {
+		return false
+	}
+	e.Health -= damage
+	if e.Health > e.MaxHealth {
+		e.Health = e.MaxHealth
+	}
+	if g.mods != nil {
+		g.mods.FireEvent("entity.damage", map[string]any{
+			"entity": g.entityInfo(e),
+			"damage": damage,
+			"health": e.Health,
+			"point":  map[string]float32{"x": point.X, "y": point.Y, "z": point.Z},
+		})
+	}
+	if e.Health <= 0 {
+		if g.mods != nil {
+			g.mods.FireEvent("entity.death", g.entityInfo(e))
+		}
+		pos := e.position()
+		c := e.Color
+		g.removeEntity(e)
+		g.burst(pos, c, 14, 5.0, 0.10)
+		return true
+	}
+	return false
+}
+
+func (g *Game) healEntity(e *Entity, amount float32) bool {
+	if e == nil || e.Static || amount <= 0 {
+		return false
+	}
+	e.Health += amount
+	if e.Health > e.MaxHealth {
+		e.Health = e.MaxHealth
+	}
+	return true
+}
+
+func (g *Game) setEntityHealth(e *Entity, health, maxHealth float32) bool {
+	if e == nil || e.Static {
+		return false
+	}
+	if maxHealth <= 0 {
+		maxHealth = 100
+	}
+	e.MaxHealth = maxHealth
+	e.Health = clampf(health, 0, maxHealth)
+	if e.Health <= 0 {
+		g.damageEntity(e, 1, e.position())
+	}
+	return true
+}
+
+// spawnProjectile creates a real dynamic sphere body and tracks it for
+// collision damage. Projectiles are transient and never saved.
+func (g *Game) spawnProjectile(owner string, pos, vel rl.Vector3, radius, damage, life float32, c rl.Color) *ModProjectile {
+	if radius <= 0.02 {
+		radius = 0.09
+	}
+	if damage <= 0 {
+		damage = 10
+	}
+	if life <= 0 {
+		life = 4
+	}
+	bd := box3d.DefaultBodyDef()
+	bd.Type = box3d.DynamicBody
+	bd.Position = toBp(pos)
+	bd.Rotation = box3d.QuatIdentity
+	bd.LinearVelocity = toBv(vel)
+	bd.AngularVelocity = bv(0, 0, 0)
+	bd.GravityScale = 0
+	bd.LinearDamping = 0
+	bd.AngularDamping = 0
+	bd.Name = "Projectile"
+	bd.EnableSleep = false
+	bd.IsBullet = true
+	body := g.world.CreateBody(&bd)
+	if body.IsNull() {
+		return nil
+	}
+	sd := box3d.DefaultShapeDef()
+	sd.Density = 20
+	sd.BaseMaterial = box3d.DefaultSurfaceMaterial()
+	sd.BaseMaterial.Friction = 0.1
+	sd.BaseMaterial.Restitution = 0.1
+	sd.Filter = projectileFilter()
+	sphere := box3d.Sphere{Center: box3d.Vec3Zero, Radius: radius}
+	body.CreateSphereShape(&sd, &sphere)
+
+	e := &Entity{
+		Body: body, Kind: PropSphere, Radius: radius, Sides: 10,
+		Color: c, Name: "Projectile", Transient: true, Invulnerable: true,
+		Density: 20, Friction: 0.1, Restitution: 0.1,
+		SpawnedAt: g.time, Owner: owner, MaxHealth: 1, Health: 1,
+	}
+	g.registerEntity(e)
+	p := &ModProjectile{
+		Entity: e, Damage: damage, Life: life, MaxLife: life,
+		Owner: owner, Prev: pos, HitMask: catStatic | catProp,
+	}
+	g.modProjectiles = append(g.modProjectiles, p)
+	return p
+}
+
+func (g *Game) updateProjectiles(dt float32) {
+	if len(g.modProjectiles) == 0 {
+		return
+	}
+	dst := g.modProjectiles[:0]
+	for _, p := range g.modProjectiles {
+		e := p.Entity
+		if e == nil || g.byID == nil || g.byID[e.ID] == nil {
+			continue
+		}
+		p.Life -= dt
+		if p.Life <= 0 {
+			g.removeEntity(e)
+			continue
+		}
+		cur := e.position()
+		delta := rlv(cur.X-p.Prev.X, cur.Y-p.Prev.Y, cur.Z-p.Prev.Z)
+		dist := lenRl(delta)
+		if dist > 0.001 {
+			res := g.world.CastRayClosest(toBp(p.Prev), toBv(delta), queryFilter(p.HitMask))
+			if res.Hit {
+				hit := toRlP(res.Point)
+				g.burst(hit, e.Color, 6, 2.5, 0.06)
+				if res.ShapeId.GetBody().IsValid() {
+					if target := g.byBody[res.ShapeId.GetBody()]; target != nil {
+						g.damageEntity(target, p.Damage, hit)
+					}
+				}
+				if g.mods != nil {
+					g.mods.FireEvent("weapon.hit", map[string]any{
+						"point":  map[string]float32{"x": hit.X, "y": hit.Y, "z": hit.Z},
+						"damage": p.Damage,
+						"owner":  p.Owner,
+					})
+				}
+				g.removeEntity(e)
+				continue
+			}
+		}
+		p.Prev = cur
+		dst = append(dst, p)
+	}
+	g.modProjectiles = dst
+}
+
+// ---------------------------------------------------------------------------
+// Mod constraint bookkeeping
+// ---------------------------------------------------------------------------
+
+func (g *Game) removeConstraintsForEntity(e *Entity) {
+	if e == nil || len(g.modConstraints) == 0 {
+		return
+	}
+	dst := g.modConstraints[:0]
+	for _, c := range g.modConstraints {
+		if c.EntityA == e.ID || c.EntityB == e.ID {
+			c.JointID.Destroy(true)
+			continue
+		}
+		dst = append(dst, c)
+	}
+	g.modConstraints = dst
+}
+
+func (g *Game) removeConstraint(c *ModConstraint) bool {
+	if c == nil {
+		return false
+	}
+	for i, x := range g.modConstraints {
+		if x == c {
+			c.JointID.Destroy(true)
+			g.modConstraints = append(g.modConstraints[:i], g.modConstraints[i+1:]...)
+			return true
+		}
+	}
+	return false
 }

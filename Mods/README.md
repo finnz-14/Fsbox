@@ -10,28 +10,20 @@ cd examplemod
 GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o ../Mods/mymod.wasm .
 ```
 
-Host API module name: `fsbox`
-- `log(ptr, size uint32)`
-- `toast(ptr, size uint32)`
-- `spawn_box(x, y, z float64)`
-- `spawn_ball(x, y, z float64)`
-- `spawn_barrel(x, y, z float64)`
-- `clear_props()`
-- `set_gravity(g float64)`
-- `prop_count() uint32`
-- `get_time() float64`
-- `spawn_preset(index int32, x, y, z float64)`
-- `remove_prop(index int32)`
-- `set_player_pos(x, y, z float64)`
-- `get_player_x/y/z() float64`
-- `set_fly(enabled int32)`
-- `set_prop_pos(index int32, x, y, z float64)`
-- `freeze_prop(index int32, frozen int32)`
-- `set_prop_color(index int32, r, g, b uint32)`
-- `set_player_rot(yaw, pitch float64)`
-- `get_player_yaw() float64`
-- `get_player_pitch() float64`
+Native Go mods live in `ModsGo/<name>` and are built to `bin/worker.exe`.
 
-Exported mod callbacks:
-- `mod_init()`
-- `mod_update()` (called every frame)
+## Host API
+Primary entry point is the generic JSON command ABI:
+- WASM: `fsbox_call(reqPtr, reqLen, respPtr, respCap) int32`
+- Request: `{"cmd":"namespace.command","args":{...}}`
+- Response: `{"ok":true,"result":...}` or `{"ok":false,"error":"..."}`
+
+Events are delivered through `mod_event(ptr,len)` when `mod_alloc`/`mod_scratch` are exported, otherwise via `fsbox_event_poll`.
+
+Legacy scalar exports (`log`, `toast`, `spawn_box`, `spawn_ball`, `spawn_barrel`, `clear_props`, `set_gravity`, `prop_count`, `get_time`, `spawn_preset`, `remove_prop`, `set_player_pos`, `get_player_x/y/z`, `set_fly`, `set_prop_pos`, `freeze_prop`, `set_prop_color`, `set_player_rot`, `get_player_yaw/pitch`, `spawn_entity`, `remove_entity`, `set_entity_pos/rot/color`, `freeze_entity`, `add_entity_force/impulse/torque`, `set_entity_gravity`, `raycast`, `constraint_weld`, `entity_float`, `register_tick_hook`) remain available.
+
+## Permissions
+Manifest `permissions` may include `*`, exact names, or prefixes (`entity.*`, `entity`). Unknown commands and missing permissions are rejected.
+
+## SDK
+See `sdk/go`. Module: `fsbox.dev/sdk`.

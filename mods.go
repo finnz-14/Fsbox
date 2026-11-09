@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	box3d "github.com/gataengine/box3d-go"
@@ -35,16 +36,26 @@ type ModManifest struct {
 }
 
 type Mod struct {
-	Name        string
-	Module      api.Module
-	Manifest    ModManifest
-	HasManifest bool
-	OnInit      api.Function
-	OnTick      api.Function
-	OnTickName  string
-	// Go mod worker (nil for WASM mods)
-	Worker *GoModWorker
-	IsGo   bool
+	Name           string
+	Module         api.Module
+	Manifest       ModManifest
+	HasManifest    bool
+	OnInit         api.Function
+	OnTick         api.Function
+	OnTickName     string
+	Worker         *GoModWorker
+	IsGo           bool
+
+	// WASM optional exports
+	ModEvent       api.Function
+	ModAlloc       api.Function
+	ModScratch     api.Function
+
+	// Per-mod event queue for mods that cannot receive push callbacks.
+	PendingEvents [][]byte
+
+	// Hook registrations owned by this mod: event -> hook names.
+	Hooks map[string][]string
 }
 
 func (m *Mod) HasPermission(perm string) bool {
@@ -52,7 +63,13 @@ func (m *Mod) HasPermission(perm string) bool {
 		return true
 	}
 	for _, p := range m.Manifest.Permissions {
-		if p == perm || p == "*" {
+		if p == "*" || p == perm {
+			return true
+		}
+		if strings.HasSuffix(p, ".*") && strings.HasPrefix(perm, strings.TrimSuffix(p, ".*")+".") {
+			return true
+		}
+		if p != "" && !strings.Contains(p, ".") && strings.HasPrefix(perm, p+".") {
 			return true
 		}
 	}
@@ -60,25 +77,125 @@ func (m *Mod) HasPermission(perm string) bool {
 }
 
 type ModManager struct {
-	Runtime wazero.Runtime
-	Ctx     context.Context
-	Mods    []*Mod
+	Runtime     wazero.Runtime
+	Ctx         context.Context
+	Mods        []*Mod
+	workerCalls chan workerCall
+	Hooks       map[string][]hookReg
+}
+
+type workerCall struct {
+	owner string
+	cmd   string
+	args  json.RawMessage
+	resp  chan json.RawMessage
+}
+
+type hookReg struct {
+	owner string
+	hook  string
 }
 
 func NewModManager(g *Game) (*ModManager, error) {
 	ctx := context.Background()
 	r := wazero.NewRuntime(ctx)
 
-	// Provide WASI so Go-compiled (wasip1) mods can run.
 	if _, err := wasi.Instantiate(ctx, r); err != nil {
 		fmt.Printf("[mod] wasi instantiate error: %v\n", err)
 	}
 
-	mm := &ModManager{Runtime: r, Ctx: ctx}
+	mm := &ModManager{
+		Runtime:     r,
+		Ctx:         ctx,
+		workerCalls: make(chan workerCall, 256),
+		Hooks:       make(map[string][]hookReg),
+	}
 
-	// Host API exposed to WASM mods under the "fsbox" module namespace.
 	builder := r.NewHostModuleBuilder("fsbox")
 
+	// Generic JSON command ABI. This is the primary, versioned entry point.
+	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, reqPtr, reqLen, respPtr, respCap uint32) int32 {
+		if m == nil || m.Memory() == nil {
+			return 0
+		}
+		buf, ok := m.Memory().Read(reqPtr, reqLen)
+		if !ok {
+			return 0
+		}
+		var req struct {
+			Cmd  string          `json:"cmd"`
+			Args json.RawMessage `json:"args"`
+		}
+		if err := json.Unmarshal(buf, &req); err != nil {
+			resp := map[string]any{"ok": false, "error": "invalid request: " + err.Error()}
+			return writeGuestResponse(m, respPtr, respCap, resp)
+		}
+		mod := mm.modForModule(m)
+		owner := ""
+		if mod != nil {
+			owner = mod.Name
+			if mod.Manifest.ID != "" {
+				owner = mod.Manifest.ID
+			}
+		}
+		if mod != nil && !mod.HasPermission(permissionForCommand(req.Cmd)) {
+			resp := map[string]any{"ok": false, "error": "permission denied: " + permissionForCommand(req.Cmd)}
+			return writeGuestResponse(m, respPtr, respCap, resp)
+		}
+		result, err := g.ModCall(owner, req.Cmd, req.Args)
+		resp := map[string]any{"ok": true, "result": result}
+		if err != nil {
+			resp = map[string]any{"ok": false, "error": err.Error()}
+		}
+		return writeGuestResponse(m, respPtr, respCap, resp)
+	}).Export("fsbox_call")
+
+	// Event polling for mods without mod_event export.
+	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, ptr, cap uint32) int32 {
+		if m == nil || m.Memory() == nil {
+			return 0
+		}
+		mod := mm.modForModule(m)
+		if mod == nil || len(mod.PendingEvents) == 0 {
+			return 0
+		}
+		ev := mod.PendingEvents[0]
+		mod.PendingEvents = mod.PendingEvents[1:]
+		if uint32(len(ev)) > cap {
+			// put back and report required size
+			mod.PendingEvents = append([][]byte{ev}, mod.PendingEvents...)
+			return int32(len(ev))
+		}
+		if !m.Memory().Write(ptr, ev) {
+			return 0
+		}
+		return int32(len(ev))
+	}).Export("fsbox_event_poll")
+
+	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) int32 {
+		return 2
+	}).Export("fsbox_api_version")
+
+	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, ptr, size uint32) int32 {
+		if m == nil || m.Memory() == nil {
+			return 1
+		}
+		buf, ok := m.Memory().Read(ptr, size)
+		if !ok {
+			return 1
+		}
+		perm := string(buf)
+		mod := mm.modForModule(m)
+		if mod == nil {
+			return 1
+		}
+		if mod.HasPermission(perm) {
+			return 1
+		}
+		return 0
+	}).Export("fsbox_has_permission")
+
+	// Backwards-compatible scalar helpers (non-duplicated).
 	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, ptr, size uint32) {
 		if m == nil || m.Memory() == nil {
 			return
@@ -101,423 +218,7 @@ func NewModManager(g *Game) (*ModManager, error) {
 		g.toast(string(buf), colAccent)
 	}).Export("toast")
 
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, x, y, z float64) {
-		g.spawnPreset(presets[0], bp(float32(x), float32(y), float32(z)), box3d.QuatIdentity, rlColorFromMod())
-	}).Export("spawn_box")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, x, y, z float64) {
-		if len(presets) > 1 {
-			g.spawnPreset(presets[1], bp(float32(x), float32(y), float32(z)), box3d.QuatIdentity, rlColorFromMod())
-		}
-	}).Export("spawn_ball")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, x, y, z float64) {
-		if len(presets) > 2 {
-			g.spawnPreset(presets[2], bp(float32(x), float32(y), float32(z)), box3d.QuatIdentity, rlColorFromMod())
-		}
-	}).Export("spawn_barrel")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) {
-		if !mm.HasPermission(m, "entity.remove") {
-			fmt.Println("[mod] permission denied: entity.remove")
-			return
-		}
-		for _, e := range append([]*Entity(nil), g.props...) {
-			g.removeEntity(e)
-		}
-	}).Export("clear_props")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, grav float64) {
-		if !g.world.IsNull() {
-			g.world.SetGravity(box3d.Vec3{Y: float32(grav)})
-			for _, e := range g.props {
-				if !e.Frozen {
-					e.Body.SetAwake(true)
-				}
-			}
-		}
-	}).Export("set_gravity")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) uint32 {
-		return uint32(len(g.props))
-	}).Export("prop_count")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		return g.time
-	}).Export("get_time")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, x, y, z float64) {
-		i := int(index)
-		if i >= 0 && i < len(presets) {
-			g.spawnPreset(presets[i], bp(float32(x), float32(y), float32(z)), box3d.QuatIdentity, rlColorFromMod())
-		}
-	}).Export("spawn_preset")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) {
-		i := int(index)
-		if i >= 0 && i < len(g.props) {
-			g.removeEntity(g.props[i])
-		}
-	}).Export("remove_prop")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, x, y, z float64) {
-		if g.player != nil && !g.player.body.IsNull() {
-			rot := g.player.body.GetRotation()
-			g.player.body.SetTransform(box3d.Pos{X: float32(x), Y: float32(y), Z: float32(z)}, rot)
-		}
-	}).Export("set_player_pos")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.body.GetPosition().X)
-	}).Export("get_player_x")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.body.GetPosition().Y)
-	}).Export("get_player_y")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.body.GetPosition().Z)
-	}).Export("get_player_z")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, enabled int32) {
-		if g.player == nil {
-			return
-		}
-		g.player.fly = enabled != 0
-		if g.player.fly {
-			g.player.body.SetGravityScale(0)
-		} else {
-			g.player.body.SetGravityScale(1)
-		}
-	}).Export("set_fly")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, x, y, z float64) {
-		i := int(index)
-		if i >= 0 && i < len(g.props) {
-			e := g.props[i]
-			rot := e.Body.GetRotation()
-			e.Body.SetTransform(box3d.Pos{X: float32(x), Y: float32(y), Z: float32(z)}, rot)
-		}
-	}).Export("set_prop_pos")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, frozen int32) {
-		i := int(index)
-		if i >= 0 && i < len(g.props) {
-			g.setFrozen(g.props[i], frozen != 0)
-		}
-	}).Export("freeze_prop")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, r, gg, b uint32) {
-		i := int(index)
-		if i >= 0 && i < len(g.props) {
-			g.props[i].Color = rl.NewColor(uint8(r), uint8(gg), uint8(b), 255)
-		}
-	}).Export("set_prop_color")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, yaw, pitch float64) {
-		if g.player != nil {
-			g.player.yaw = float32(yaw)
-			g.player.pitch = float32(pitch)
-		}
-	}).Export("set_player_rot")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.yaw)
-	}).Export("get_player_yaw")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.pitch)
-	}).Export("get_player_pitch")
-
-	// Entity system
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, presetIdx int32, x, y, z float64) {
-		if !mm.HasPermission(m, "entity.create") {
-			fmt.Println("[mod] permission denied: entity.create")
-			return
-		}
-		if e := g.spawnEntityFromPreset(presetIdx, float32(x), float32(y), float32(z)); e != nil {
-			fmt.Printf("[mod] spawned entity %s\n", e.Name)
-		}
-	}).Export("spawn_entity")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) {
-		if !mm.HasPermission(m, "entity.remove") {
-			fmt.Println("[mod] permission denied: entity.remove")
-			return
-		}
-		if g.removeEntityByIndex(index) {
-			fmt.Printf("[mod] removed entity %d\n", index)
-		}
-	}).Export("remove_entity")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, x, y, z float64) {
-		if !mm.HasPermission(m, "entity.modify") {
-			fmt.Println("[mod] permission denied: entity.modify")
-			return
-		}
-		if g.setEntityTransform(index, float32(x), float32(y), float32(z)) {
-			fmt.Printf("[mod] set entity %d position\n", index)
-		}
-	}).Export("set_entity_pos")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, yaw, pitch, roll float64) {
-		if !mm.HasPermission(m, "entity.modify") {
-			fmt.Println("[mod] permission denied: entity.modify")
-			return
-		}
-		if g.setEntityRotation(index, float32(yaw), float32(pitch), float32(roll)) {
-			fmt.Printf("[mod] set entity %d rotation\n", index)
-		}
-	}).Export("set_entity_rot")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, r, g2, b uint32) {
-		if !mm.HasPermission(m, "entity.modify") {
-			fmt.Println("[mod] permission denied: entity.modify")
-			return
-		}
-		if g.setEntityColor(index, r, g2, b) {
-			fmt.Printf("[mod] set entity %d color\n", index)
-		}
-	}).Export("set_entity_color")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, frozen int32) {
-		if !mm.HasPermission(m, "entity.modify") {
-			fmt.Println("[mod] permission denied: entity.modify")
-			return
-		}
-		if g.setEntityFrozen(index, frozen) {
-			fmt.Printf("[mod] set entity %d frozen=%d\n", index, frozen)
-		}
-	}).Export("freeze_entity")
-
-	// Physics system
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, fx, fy, fz float64) {
-		if !mm.HasPermission(m, "physics.modify") {
-			fmt.Println("[mod] permission denied: physics.modify")
-			return
-		}
-		if g.addEntityForce(index, float32(fx), float32(fy), float32(fz)) {
-			fmt.Printf("[mod] applied force to entity %d\n", index)
-		}
-	}).Export("add_entity_force")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, ix, iy, iz float64) {
-		if !mm.HasPermission(m, "physics.modify") {
-			fmt.Println("[mod] permission denied: physics.modify")
-			return
-		}
-		if g.addEntityImpulse(index, float32(ix), float32(iy), float32(iz)) {
-			fmt.Printf("[mod] applied impulse to entity %d\n", index)
-		}
-	}).Export("add_entity_impulse")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, tx, ty, tz float64) {
-		if !mm.HasPermission(m, "physics.modify") {
-			fmt.Println("[mod] permission denied: physics.modify")
-			return
-		}
-		if g.addEntityTorque(index, float32(tx), float32(ty), float32(tz)) {
-			fmt.Printf("[mod] applied torque to entity %d\n", index)
-		}
-	}).Export("add_entity_torque")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32, gravityScale float64) {
-		if !mm.HasPermission(m, "physics.modify") {
-			fmt.Println("[mod] permission denied: physics.modify")
-			return
-		}
-		if g.setEntityGravity(index, float32(gravityScale)) {
-			fmt.Printf("[mod] set entity %d gravity=%.2f\n", index, gravityScale)
-		}
-	}).Export("set_entity_gravity")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, maxDist float64) {
-		if !mm.HasPermission(m, "physics.read") {
-			fmt.Println("[mod] permission denied: physics.read")
-			return
-		}
-		hit, px, py, pz, nx, ny, nz := g.raycastFromCamera(float32(maxDist))
-		if hit {
-			fmt.Printf("[mod] raycast hit=(%.2f,%.2f,%.2f) normal=(%.2f,%.2f,%.2f)\n", px, py, pz, nx, ny, nz)
-		}
-	}).Export("raycast")
-
-	// Player system
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, x, y, z float64) {
-		if !mm.HasPermission(m, "player.modify") {
-			fmt.Println("[mod] permission denied: player.modify")
-			return
-		}
-		if g.player != nil && !g.player.body.IsNull() {
-			rot := g.player.body.GetRotation()
-			g.player.body.SetTransform(box3d.Pos{X: float32(x), Y: float32(y), Z: float32(z)}, rot)
-			fmt.Printf("[mod] set player position\n")
-		}
-	}).Export("set_player_pos")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, yaw, pitch float64) {
-		if !mm.HasPermission(m, "player.modify") {
-			fmt.Println("[mod] permission denied: player.modify")
-			return
-		}
-		if g.player != nil {
-			g.player.yaw = float32(yaw)
-			g.player.pitch = float32(pitch)
-			fmt.Printf("[mod] set player rotation\n")
-		}
-	}).Export("set_player_rot")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, enabled int32) {
-		if !mm.HasPermission(m, "player.modify") {
-			fmt.Println("[mod] permission denied: player.modify")
-			return
-		}
-		if g.player == nil {
-			return
-		}
-		g.player.fly = enabled != 0
-		if g.player.fly {
-			g.player.body.SetGravityScale(0)
-		} else {
-			g.player.body.SetGravityScale(1)
-		}
-	}).Export("set_fly")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.body.GetPosition().X)
-	}).Export("get_player_x")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.body.GetPosition().Y)
-	}).Export("get_player_y")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.body.GetPosition().Z)
-	}).Export("get_player_z")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.yaw)
-	}).Export("get_player_yaw")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module) float64 {
-		if g.player == nil {
-			return 0
-		}
-		return float64(g.player.pitch)
-	}).Export("get_player_pitch")
-
-	// Entity query system
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) float64 {
-		if index < 0 || index >= int32(len(g.props)) {
-			return 0
-		}
-		return float64(g.props[index].Body.GetPosition().X)
-	}).Export("get_entity_x")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) float64 {
-		if index < 0 || index >= int32(len(g.props)) {
-			return 0
-		}
-		return float64(g.props[index].Body.GetPosition().Y)
-	}).Export("get_entity_y")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) float64 {
-		if index < 0 || index >= int32(len(g.props)) {
-			return 0
-		}
-		return float64(g.props[index].Body.GetPosition().Z)
-	}).Export("get_entity_z")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) float64 {
-		if index < 0 || index >= int32(len(g.props)) {
-			return 0
-		}
-		q := g.props[index].Body.GetRotation()
-		return float64(q.S) // return w component as a simple rotation proxy
-	}).Export("get_entity_rot_w")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) uint32 {
-		if index < 0 || index >= int32(len(g.props)) {
-			return 0
-		}
-		c := g.props[index].Color
-		return uint32(c.R)<<16 | uint32(c.G)<<8 | uint32(c.B)
-	}).Export("get_entity_color")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) uint32 {
-		if index < 0 || index >= int32(len(g.props)) {
-			return 0
-		}
-		if g.props[index].Frozen {
-			return 1
-		}
-		return 0
-	}).Export("get_entity_frozen")
-
-	// Constraint system
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, indexA, indexB int32) {
-		if !mm.HasPermission(m, "physics.modify") {
-			fmt.Println("[mod] permission denied: physics.modify")
-			return
-		}
-		if indexA < 0 || indexA >= int32(len(g.props)) || indexB < 0 || indexB >= int32(len(g.props)) {
-			return
-		}
-		eA := g.props[indexA]
-		eB := g.props[indexB]
-		// Simple weld constraint: freeze relative motion by welding positions
-		// Box3D doesn't expose constraint API directly in this version, so we
-		// approximate by constraining body B to body A's transform each tick.
-		_ = eA
-		_ = eB
-		fmt.Printf("[mod] weld constraint not directly supported by box3d version; entities %d,%d marked\n", indexA, indexB)
-	}).Export("constraint_weld")
-
-	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, index int32) {
-		if !mm.HasPermission(m, "physics.modify") {
-			fmt.Println("[mod] permission denied: physics.modify")
-			return
-		}
-		if index < 0 || index >= int32(len(g.props)) {
-			return
-		}
-		g.props[index].Body.SetGravityScale(0)
-		fmt.Printf("[mod] entity %d gravity disabled (float)\n", index)
-	}).Export("entity_float")
-
-	// Hook system: mods can register a tick hook function name to call each frame
 	builder.NewFunctionBuilder().WithFunc(func(ctx context.Context, m api.Module, ptr, size uint32) {
-		if !mm.HasPermission(m, "engine.hooks") {
-			fmt.Println("[mod] permission denied: engine.hooks")
-			return
-		}
 		if m == nil || m.Memory() == nil {
 			return
 		}
@@ -525,20 +226,14 @@ func NewModManager(g *Game) (*ModManager, error) {
 		if !ok {
 			return
 		}
-		hookName := string(buf)
-		fmt.Printf("[mod] registered tick hook: %s\n", hookName)
-		// Store hook name for future dispatch
-		mod := mm.modForModule(m)
-		if mod != nil {
-			mod.OnTickName = hookName
-		}
-	}).Export("register_tick_hook")
+		g.toast(string(buf), colAccent)
+	}).Export("notify")
 
 	if _, err := builder.Instantiate(ctx); err != nil {
 		return nil, err
 	}
 
-	// Load mods from ./Mods
+	// Load WASM mods.
 	dir := "Mods"
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
@@ -552,22 +247,16 @@ func NewModManager(g *Game) (*ModManager, error) {
 			continue
 		}
 
-		// Load optional manifest.
 		manifest := ModManifest{}
 		hasManifest := false
-		manifestPath := filepath.Join(dir, filepath.Base(e.Name())+".json")
+		manifestPath := filepath.Join(dir, e.Name()+".json")
 		if _, err := os.Stat(manifestPath); err == nil {
 			if data, err := os.ReadFile(manifestPath); err == nil {
 				if err := json.Unmarshal(data, &manifest); err == nil {
 					hasManifest = true
-					if manifest.Runtime != "" && manifest.Runtime != "wasm" {
-						fmt.Printf("[mod] skipping %s: unsupported runtime %q\n", path, manifest.Runtime)
-						continue
-					}
 				}
 			}
 		} else {
-			// Also try manifest.json
 			manifestPath = filepath.Join(dir, "manifest.json")
 			if data, err := os.ReadFile(manifestPath); err == nil {
 				if err := json.Unmarshal(data, &manifest); err == nil {
@@ -575,18 +264,34 @@ func NewModManager(g *Game) (*ModManager, error) {
 				}
 			}
 		}
+		if hasManifest && manifest.Runtime != "" && manifest.Runtime != "wasm" {
+			fmt.Printf("[mod] skipping %s: unsupported runtime %q\n", path, manifest.Runtime)
+			continue
+		}
+		if manifest.Runtime == "" {
+			manifest.Runtime = "wasm"
+		}
 
 		mod, err := r.InstantiateWithConfig(ctx, wasm, wazero.NewModuleConfig().WithName(e.Name()).WithStartFunctions("_initialize"))
 		if err != nil {
 			fmt.Printf("[mod] failed to instantiate %s: %v\n", path, err)
 			continue
 		}
-		m := &Mod{Name: e.Name(), Module: mod, Manifest: manifest, HasManifest: hasManifest}
+		m := &Mod{Name: e.Name(), Module: mod, Manifest: manifest, HasManifest: hasManifest, Hooks: make(map[string][]string)}
 		if fn := mod.ExportedFunction("mod_init"); fn != nil {
 			m.OnInit = fn
 		}
 		if fn := mod.ExportedFunction("mod_update"); fn != nil {
 			m.OnTick = fn
+		}
+		if fn := mod.ExportedFunction("mod_event"); fn != nil {
+			m.ModEvent = fn
+		}
+		if fn := mod.ExportedFunction("mod_alloc"); fn != nil {
+			m.ModAlloc = fn
+		}
+		if fn := mod.ExportedFunction("mod_scratch"); fn != nil {
+			m.ModScratch = fn
 		}
 		if m.OnInit != nil {
 			if _, err := m.OnInit.Call(ctx); err != nil {
@@ -618,29 +323,87 @@ func NewModManager(g *Game) (*ModManager, error) {
 				}
 			}
 		}
-		entry := manifest.Entry
-		worker, err := NewGoModWorker(manifest.ID, modDir, entry, nil)
+		if manifest.ID == "" {
+			manifest.ID = e.Name()
+		}
+		if manifest.Runtime == "" {
+			manifest.Runtime = "go"
+		}
+		if manifest.Entry == "" {
+			manifest.Entry = "main.go"
+		}
+
+		worker, err := NewGoModWorker(manifest.ID, modDir, manifest.Entry, nil)
 		if err != nil {
 			fmt.Printf("[mod] failed to start Go mod %s: %v\n", modDir, err)
 			continue
 		}
+		worker.OnRequest = func(method string, params json.RawMessage) (any, error) {
+			if method != "engine.call" {
+				return nil, fmt.Errorf("unknown method %q", method)
+			}
+			var a struct {
+				Cmd  string          `json:"cmd"`
+				Args json.RawMessage `json:"args"`
+			}
+			if err := json.Unmarshal(params, &a); err != nil {
+				return nil, err
+			}
+			ch := make(chan json.RawMessage, 1)
+			mm.workerCalls <- workerCall{owner: manifest.ID, cmd: a.Cmd, args: a.Args, resp: ch}
+			select {
+			case raw := <-ch:
+				return json.RawMessage(raw), nil
+			case <-time.After(10 * time.Second):
+				return nil, fmt.Errorf("engine call timeout")
+			}
+		}
+
 		m := &Mod{
 			Name:        manifest.ID,
 			Manifest:    manifest,
 			HasManifest: true,
 			Worker:      worker,
 			IsGo:        true,
+			Hooks:       make(map[string][]string),
 		}
-		// Send hello handshake over RPC (with retries for compile startup).
-		var handshakeErr error
-		for attempt := 0; attempt < 30; attempt++ {
-			if _, err := worker.Call("mod.hello", map[string]string{"game": "fsbox", "version": RPCProtocolVersion}); err == nil {
-				handshakeErr = nil
-				break
-			} else {
-				handshakeErr = err
+
+		params := map[string]any{
+			"game":        "fsbox",
+			"version":     RPCProtocolVersion,
+			"api_version": ModAPIVersion,
+		}
+		resCh := make(chan struct {
+			msg *RPCMessage
+			err error
+		}, 1)
+		go func() {
+			msg, err := worker.Call("mod.init", params)
+			resCh <- struct {
+				msg *RPCMessage
+				err error
+			}{msg, err}
+		}()
+
+		start := time.Now()
+		handshakeErr := error(nil)
+		done := false
+		for !done && time.Since(start) < 10*time.Second {
+			select {
+			case r := <-resCh:
+				handshakeErr = r.err
+				done = true
+			case req := <-mm.workerCalls:
+				result, err := g.ModCall(req.owner, req.cmd, req.args)
+				resp := map[string]any{"ok": true, "result": result}
+				if err != nil {
+					resp = map[string]any{"ok": false, "error": err.Error()}
+				}
+				raw, _ := json.Marshal(resp)
+				req.resp <- raw
+			default:
+				time.Sleep(10 * time.Millisecond)
 			}
-			time.Sleep(300 * time.Millisecond)
 		}
 		if handshakeErr != nil {
 			fmt.Printf("[mod] Go mod %s handshake failed: %v\n", manifest.ID, handshakeErr)
@@ -654,130 +417,25 @@ func NewModManager(g *Game) (*ModManager, error) {
 	return mm, nil
 }
 
-// ---------------------------------------------------------------------------
-// Game-side mod API helpers
-// ---------------------------------------------------------------------------
-
-func rlColorFromMod() rl.Color {
-	return colCrate
-}
-
-// spawnEntityFromPreset creates a dynamic entity from a preset index at a world position.
-func (g *Game) spawnEntityFromPreset(presetIdx int32, x, y, z float32) *Entity {
-	if presetIdx < 0 || presetIdx >= int32(len(presets)) {
-		return nil
+func writeGuestResponse(m api.Module, respPtr, respCap uint32, resp map[string]any) int32 {
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return 0
 	}
-	return g.spawnPreset(presets[presetIdx], bp(x, y, z), box3d.QuatIdentity, colWhite())
-}
-
-// removeEntityByIndex removes a prop by its index in g.props.
-func (g *Game) removeEntityByIndex(index int32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
+	if respCap == 0 {
+		return int32(len(data))
 	}
-	g.removeEntity(g.props[index])
-	return true
-}
-
-// setEntityTransform sets position and rotation of a prop.
-func (g *Game) setEntityTransform(index int32, x, y, z float32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
+	n := len(data)
+	if n > int(respCap) {
+		n = int(respCap)
 	}
-	e := g.props[index]
-	e.Body.SetTransform(box3d.Pos{X: x, Y: y, Z: z}, e.Body.GetRotation())
-	return true
-}
-
-// setEntityRotation sets only rotation of a prop.
-func (g *Game) setEntityRotation(index int32, yaw, pitch, roll float32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
+	if n > 0 {
+		if ok := m.Memory().Write(respPtr, data[:n]); !ok {
+			return 0
+		}
 	}
-	e := g.props[index]
-	q := box3d.MakeQuatFromAxisAngle(box3d.Vec3{Y: 1}, yaw)
-	q = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{X: 1}, pitch), q)
-	q = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{Z: 1}, roll), q)
-	e.Body.SetTransform(e.Body.GetPosition(), q)
-	return true
+	return int32(len(data))
 }
-
-// setEntityColor sets the render color of a prop.
-func (g *Game) setEntityColor(index int32, r, g2, b uint32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
-	}
-	g.props[index].Color = rl.NewColor(uint8(r), uint8(g2), uint8(b), 255)
-	return true
-}
-
-// setEntityFrozen freezes or thaws a prop.
-func (g *Game) setEntityFrozen(index int32, frozen int32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
-	}
-	g.setFrozen(g.props[index], frozen != 0)
-	return true
-}
-
-// addEntityForce applies a continuous force to a prop at its center of mass.
-func (g *Game) addEntityForce(index int32, fx, fy, fz float32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
-	}
-	e := g.props[index]
-	e.Body.ApplyForceToCenter(box3d.Vec3{X: fx, Y: fy, Z: fz}, true)
-	return true
-}
-
-// addEntityImpulse applies an instantaneous impulse to a prop.
-func (g *Game) addEntityImpulse(index int32, ix, iy, iz float32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
-	}
-	e := g.props[index]
-	e.Body.ApplyLinearImpulseToCenter(box3d.Vec3{X: ix, Y: iy, Z: iz}, true)
-	return true
-}
-
-// addEntityTorque applies torque to a prop.
-func (g *Game) addEntityTorque(index int32, tx, ty, tz float32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
-	}
-	e := g.props[index]
-	e.Body.ApplyTorque(box3d.Vec3{X: tx, Y: ty, Z: tz}, true)
-	return true
-}
-
-// setEntityGravity sets per-entity gravity scale.
-func (g *Game) setEntityGravity(index int32, gravityScale float32) bool {
-	if index < 0 || index >= int32(len(g.props)) {
-		return false
-	}
-	e := g.props[index]
-	e.Body.SetGravityScale(gravityScale)
-	return true
-}
-
-// raycastFromCamera casts a ray from the player camera and returns hit info.
-func (g *Game) raycastFromCamera(maxDist float32) (bool, float32, float32, float32, float32, float32, float32) {
-	res := g.castRay(maxDist, catStatic|catProp)
-	if !res.Hit {
-		return false, 0, 0, 0, 0, 0, 0
-	}
-	p := toRlP(res.Point)
-	n := toRlV(res.Normal)
-	return true, p.X, p.Y, p.Z, n.X, n.Y, n.Z
-}
-
-func colWhite() rl.Color {
-	return rl.NewColor(255, 255, 255, 255)
-}
-
-// ---------------------------------------------------------------------------
-// Host API registration
-// ---------------------------------------------------------------------------
 
 func (mm *ModManager) modForModule(m api.Module) *Mod {
 	if mm == nil || m == nil {
@@ -791,29 +449,172 @@ func (mm *ModManager) modForModule(m api.Module) *Mod {
 	return nil
 }
 
-func (mm *ModManager) HasPermission(m api.Module, perm string) bool {
-	mod := mm.modForModule(m)
-	if mod == nil {
-		return true
+func (mm *ModManager) findModByName(name string) *Mod {
+	if mm == nil {
+		return nil
 	}
-	return mod.HasPermission(perm)
+	for _, m := range mm.Mods {
+		if m.Name == name || (m.Manifest.ID != "" && m.Manifest.ID == name) {
+			return m
+		}
+	}
+	return nil
 }
 
-func (mm *ModManager) Tick(g *Game) {
+func (mm *ModManager) OwnerHasPermission(owner, perm string) bool {
+	m := mm.findModByName(owner)
+	if m == nil {
+		return true
+	}
+	return m.HasPermission(perm)
+}
+
+func (mm *ModManager) AddHook(owner, event, hook string) bool {
+	if event == "" || hook == "" {
+		return false
+	}
+	m := mm.findModByName(owner)
+	if m == nil {
+		return false
+	}
+	if !m.HasPermission("engine.hooks") {
+		return false
+	}
+	if m.Hooks == nil {
+		m.Hooks = make(map[string][]string)
+	}
+	m.Hooks[event] = appendUnique(m.Hooks[event], hook)
+	mm.Hooks[event] = append(mm.Hooks[event], hookReg{owner: owner, hook: hook})
+	return true
+}
+
+func (mm *ModManager) RemoveHook(owner, event, hook string) bool {
+	m := mm.findModByName(owner)
+	if m != nil && m.Hooks != nil {
+		m.Hooks[event] = removeString(m.Hooks[event], hook)
+	}
+	regs := mm.Hooks[event]
+	out := regs[:0]
+	for _, r := range regs {
+		if r.owner == owner && r.hook == hook {
+			continue
+		}
+		out = append(out, r)
+	}
+	mm.Hooks[event] = out
+	return true
+}
+
+func (mm *ModManager) ListHooks(owner string) map[string][]string {
+	out := make(map[string][]string)
+	m := mm.findModByName(owner)
+	if m != nil && m.Hooks != nil {
+		for k, v := range m.Hooks {
+			out[k] = append([]string(nil), v...)
+		}
+	}
+	return out
+}
+
+func (mm *ModManager) deliverWASMEvent(m *Mod, raw []byte) {
+	if m == nil || m.Module == nil {
+		return
+	}
+	if m.ModEvent != nil {
+		ptr := uint32(0)
+		if m.ModAlloc != nil {
+			res, err := m.ModAlloc.Call(mm.Ctx, uint64(len(raw)))
+			if err == nil && len(res) > 0 {
+				ptr = uint32(res[0])
+			}
+		} else if m.ModScratch != nil {
+			res, err := m.ModScratch.Call(mm.Ctx, uint64(len(raw)))
+			if err == nil && len(res) > 0 {
+				ptr = uint32(res[0])
+			}
+		}
+		if ptr != 0 {
+			if ok := m.Module.Memory().Write(ptr, raw); ok {
+				if _, err := m.ModEvent.Call(mm.Ctx, uint64(ptr), uint64(len(raw))); err != nil {
+					fmt.Printf("[mod] event error %s: %v\n", m.Name, err)
+				}
+				return
+			}
+		}
+	}
+	// Queue for polling.
+	m.PendingEvents = append(m.PendingEvents, raw)
+}
+
+func (mm *ModManager) FireEvent(event string, data any) {
 	if mm == nil {
 		return
 	}
+	payload := map[string]any{"event": event, "data": data}
+	raw, _ := json.Marshal(payload)
 	for _, m := range mm.Mods {
 		if m.IsGo && m.Worker != nil {
-			// Per-frame Go mod ticking disabled on Windows due to stdio pipe issues.
-			// Handshake is verified at load time; per-frame RPC will be re-enabled
-			// with a more robust transport (TCP/local socket) in a future update.
+			m.Worker.Notify("mod.event", payload)
+			continue
+		}
+		mm.deliverWASMEvent(m, raw)
+	}
+	// Registered hooks: invoke specific exported functions.
+	if regs, ok := mm.Hooks[event]; ok {
+		for _, r := range regs {
+			m := mm.findModByName(r.owner)
+			if m == nil {
+				continue
+			}
+			if m.IsGo && m.Worker != nil {
+				m.Worker.Notify("mod.hook", map[string]any{"event": event, "hook": r.hook, "data": data})
+				continue
+			}
+			if m.Module != nil {
+				fn := m.Module.ExportedFunction(r.hook)
+				if fn == nil {
+					continue
+				}
+				if _, err := fn.Call(mm.Ctx); err != nil {
+					fmt.Printf("[mod] hook error %s/%s: %v\n", m.Name, r.hook, err)
+				}
+			}
+		}
+	}
+}
+
+func (mm *ModManager) Tick(g *Game, simDt float64) {
+	if mm == nil {
+		return
+	}
+	mm.DrainWorkerCalls(g)
+	for _, m := range mm.Mods {
+		if m.IsGo && m.Worker != nil {
+			m.Worker.Notify("mod.tick", map[string]any{"dt": simDt, "time": g.time})
 			continue
 		}
 		if m.OnTick != nil {
 			if _, err := m.OnTick.Call(mm.Ctx); err != nil {
 				fmt.Printf("[mod] tick error %s: %v\n", m.Name, err)
 			}
+		}
+	}
+	mm.DrainWorkerCalls(g)
+}
+
+func (mm *ModManager) DrainWorkerCalls(g *Game) {
+	for {
+		select {
+		case req := <-mm.workerCalls:
+			result, err := g.ModCall(req.owner, req.cmd, req.args)
+			resp := map[string]any{"ok": true, "result": result}
+			if err != nil {
+				resp = map[string]any{"ok": false, "error": err.Error()}
+			}
+			raw, _ := json.Marshal(resp)
+			req.resp <- raw
+		default:
+			return
 		}
 	}
 }
@@ -830,4 +631,177 @@ func (mm *ModManager) Close() {
 	if mm.Runtime != nil {
 		_ = mm.Runtime.Close(mm.Ctx)
 	}
+}
+
+// Permission mapping for commands.
+func permissionForCommand(cmd string) string {
+	switch {
+	case strings.HasPrefix(cmd, "engine."):
+		if cmd == "engine.info" || cmd == "engine.get_time" || cmd == "engine.api_version" || cmd == "engine.has_permission" {
+			return "engine.read"
+		}
+		return "engine.control"
+	case strings.HasPrefix(cmd, "entity."):
+		if strings.HasPrefix(cmd, "entity.get") || strings.HasPrefix(cmd, "entity.list") || strings.HasPrefix(cmd, "entity.exists") {
+			return "entity.read"
+		}
+		if strings.HasPrefix(cmd, "entity.spawn") || cmd == "entity.clear" {
+			return "entity.create"
+		}
+		if strings.HasPrefix(cmd, "entity.remove") {
+			return "entity.remove"
+		}
+		return "entity.modify"
+	case strings.HasPrefix(cmd, "physics."):
+		if cmd == "physics.stats" || cmd == "physics.get_gravity" || cmd == "physics.raycast" || cmd == "physics.raycast_camera" || cmd == "physics.overlap_sphere" {
+			return "physics.read"
+		}
+		return "physics.modify"
+	case strings.HasPrefix(cmd, "player."):
+		if cmd == "player.get" {
+			return "player.read"
+		}
+		return "player.modify"
+	case strings.HasPrefix(cmd, "world."):
+		if cmd == "world.get_time" || cmd == "world.get_sun" {
+			return "world.read"
+		}
+		return "world.modify"
+	case strings.HasPrefix(cmd, "input."):
+		return "input.read"
+	case strings.HasPrefix(cmd, "ui."):
+		return "ui.draw"
+	case strings.HasPrefix(cmd, "render."):
+		return "render.draw"
+	case strings.HasPrefix(cmd, "particle."):
+		return "particle"
+	case strings.HasPrefix(cmd, "audio."):
+		return "audio"
+	case strings.HasPrefix(cmd, "weapon."):
+		return "weapon"
+	case strings.HasPrefix(cmd, "tool."):
+		return "tool"
+	case strings.HasPrefix(cmd, "hook."):
+		return "engine.hooks"
+	case strings.HasPrefix(cmd, "resource."):
+		return "resource"
+	case strings.HasPrefix(cmd, "content."):
+		return "content"
+	case strings.HasPrefix(cmd, "settings."):
+		return "settings"
+	case strings.HasPrefix(cmd, "save") || strings.HasPrefix(cmd, "world.save") || strings.HasPrefix(cmd, "world.load") || strings.HasPrefix(cmd, "engine.save") || strings.HasPrefix(cmd, "engine.load"):
+		return "save"
+	case strings.HasPrefix(cmd, "net."):
+		return "net"
+	case strings.HasPrefix(cmd, "camera."):
+		return "camera"
+	default:
+		return "engine.read"
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Game-side mod API helpers (backwards compat)
+// ---------------------------------------------------------------------------
+
+func rlColorFromMod() rl.Color {
+	return colCrate
+}
+
+func (g *Game) spawnEntityFromPreset(presetIdx int32, x, y, z float32) *Entity {
+	if presetIdx < 0 || presetIdx >= int32(len(presets)) {
+		return nil
+	}
+	return g.spawnPreset(presets[presetIdx], bp(x, y, z), box3d.QuatIdentity, colWhite())
+}
+
+func (g *Game) removeEntityByIndex(index int32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	g.removeEntity(g.props[index])
+	return true
+}
+
+func (g *Game) setEntityTransform(index int32, x, y, z float32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	e := g.props[index]
+	e.Body.SetTransform(box3d.Pos{X: x, Y: y, Z: z}, e.Body.GetRotation())
+	return true
+}
+
+func (g *Game) setEntityRotation(index int32, yaw, pitch, roll float32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	e := g.props[index]
+	q := box3d.MakeQuatFromAxisAngle(box3d.Vec3{Y: 1}, yaw)
+	q = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{X: 1}, pitch), q)
+	q = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{Z: 1}, roll), q)
+	e.Body.SetTransform(e.Body.GetPosition(), q)
+	return true
+}
+
+func (g *Game) setEntityColor(index int32, r, g2, b uint32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	g.props[index].Color = rl.NewColor(uint8(r), uint8(g2), uint8(b), 255)
+	return true
+}
+
+func (g *Game) setEntityFrozen(index int32, frozen int32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	g.setFrozen(g.props[index], frozen != 0)
+	return true
+}
+
+func (g *Game) addEntityForce(index int32, fx, fy, fz float32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	e := g.props[index]
+	e.Body.ApplyForceToCenter(box3d.Vec3{X: fx, Y: fy, Z: fz}, true)
+	return true
+}
+
+func (g *Game) addEntityImpulse(index int32, ix, iy, iz float32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	e := g.props[index]
+	e.Body.ApplyLinearImpulseToCenter(box3d.Vec3{X: ix, Y: iy, Z: iz}, true)
+	return true
+}
+
+func (g *Game) addEntityTorque(index int32, tx, ty, tz float32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	e := g.props[index]
+	e.Body.ApplyTorque(box3d.Vec3{X: tx, Y: ty, Z: tz}, true)
+	return true
+}
+
+func (g *Game) setEntityGravity(index int32, gravityScale float32) bool {
+	if index < 0 || index >= int32(len(g.props)) {
+		return false
+	}
+	e := g.props[index]
+	e.Body.SetGravityScale(gravityScale)
+	return true
+}
+
+func (g *Game) raycastFromCamera(maxDist float32) (bool, float32, float32, float32, float32, float32, float32) {
+	res := g.castRay(maxDist, catStatic|catProp)
+	if !res.Hit {
+		return false, 0, 0, 0, 0, 0, 0
+	}
+	p := toRlP(res.Point)
+	n := toRlV(res.Normal)
+	return true, p.X, p.Y, p.Z, n.X, n.Y, n.Z
 }

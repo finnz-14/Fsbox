@@ -29,6 +29,13 @@ type Player struct {
 	jumpBuffer int
 	fly        bool
 
+	// Mod-controllable gameplay modifiers and health. The defaults match the
+	// original movement tuning exactly (1.0 multipliers).
+	speedScale float32
+	jumpScale  float32
+	health     float32
+	maxHealth  float32
+
 	spawn box3d.Pos
 }
 
@@ -66,11 +73,15 @@ func newPlayer(w box3d.WorldID, spawn box3d.Pos, yaw, pitch float32, fly bool) *
 	body.CreateCapsuleShape(&sd, &capsule)
 
 	return &Player{
-		body:  body,
-		yaw:   yaw,
-		pitch: pitch,
-		fly:   fly,
-		spawn: spawn,
+		body:       body,
+		yaw:        yaw,
+		pitch:      pitch,
+		fly:        fly,
+		speedScale: 1,
+		jumpScale:  1,
+		health:     100,
+		maxHealth:  100,
+		spawn:      spawn,
 	}
 }
 
@@ -110,6 +121,7 @@ func (p *Player) tick(g *Game, dt float32) {
 		if sprint {
 			speed = flySprint
 		}
+		speed *= p.speedScale
 		desired := rlv(move.X*speed, 0, move.Z*speed)
 		if rl.IsKeyDown(rl.KeySpace) {
 			desired.Y += flyVertical
@@ -126,7 +138,7 @@ func (p *Player) tick(g *Game, dt float32) {
 	}
 
 	if p.jumpBuffer > 0 && p.coyote > 0 {
-		v.Y = jumpVelocity
+		v.Y = jumpVelocity * p.jumpScale
 		p.coyote = 0
 		p.jumpBuffer = 0
 		p.grounded = false
@@ -136,6 +148,7 @@ func (p *Player) tick(g *Game, dt float32) {
 	if sprint {
 		speed = sprintSpeed
 	}
+	speed *= p.speedScale
 	// Preserve horizontal momentum for bunny hopping: never slow the player
 	// down below their current speed while they are moving and jumping.
 	horizSpeed := vlen(v.X, 0, v.Z)

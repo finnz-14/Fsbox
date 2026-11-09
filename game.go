@@ -70,11 +70,13 @@ type Shockwave struct {
 // effects. The simulation runs at a fixed 60 Hz while rendering follows the
 // monitor's frame rate.
 type Game struct {
-	world    box3d.WorldID
-	player   *Player
-	entities []*Entity
-	props    []*Entity
-	byBody   map[box3d.BodyID]*Entity
+	world       box3d.WorldID
+	player      *Player
+	entities    []*Entity
+	props       []*Entity
+	byBody      map[box3d.BodyID]*Entity
+	byID        map[int32]*Entity
+	nextEntityID int32
 
 	held       *Entity
 	holdDist   float32
@@ -154,20 +156,222 @@ type Game struct {
 	lastCardKind  int
 	toolMenuSel   ToolID
 	menuSpawnN    int
+
+	// ------------------------------------------------------------------
+	// Phase 2+ modding runtime state
+	// ------------------------------------------------------------------
+
+	// Weapon registry: mods register custom weapons; index into this slice is
+	// the weapon ID used by host API calls.
+	modWeapons       []*ModWeapon
+	modWeaponLast    int32
+	activeModWeapon  int32
+
+	// Custom tool registrations from mods.
+	modTools        []*ModTool
+	modToolLast     int32
+	activeModTool   int32
+	menuModToolSel  int32
+	toolModColor    rl.Color
+
+	// Active constraints created by mods via box3d joints.
+	modConstraints    []*ModConstraint
+	modConstraintLast int32
+
+	// Input hooks: key code -> list of event names to fire.
+	modInputHooks map[int32][]string
+	modMouseHooks map[int32][]string
+
+	// Mod-owned particles (simple point particles rendered by the engine).
+	modParticles     []*ModParticle
+	modParticleLast  int32
+
+	// Mod projectiles (real dynamic bodies tracked for collision/damage).
+	modProjectiles []*ModProjectile
+
+	// Queued 2D UI draw commands and 3D debug draw commands. Mods can call
+	// ui.draw_* / render.*_3d from any callback; the engine replays the queue
+	// during the draw phase.
+	modDrawQueue  []ModDrawCmd
+	modDebugQueue []ModDebugCmd
+	modDrawActive bool
+
+	// Audio resources owned by mods. Lazily initialised on first use.
+	modSounds    map[string]rl.Sound
+	modMusic     map[string]rl.Music
+	modMusicVol  map[string]float32
+	modAudioReady bool
+
+	// Mod hooks that should run during the HUD phase.
+	modHUDHooks []string
+
+	// Frame counter and simulation time scale.
+	frame     int64
+	timeScale float64
+
+	// Rendering overrides exposed to mods.
+	sunDir    rl.Vector3
+	skyTop    rl.Color
+	skyBottom rl.Color
 }
+
+// ------------------------------------------------------------------
+// Phase 2+ data types
+// ------------------------------------------------------------------
+
+// WeaponType identifies the firing behavior of a registered weapon.
+type WeaponType int8
+
+const (
+	WeaponHitscan WeaponType = iota
+	WeaponProjectile
+	WeaponMelee
+)
+
+func weaponTypeFromString(s string) WeaponType {
+	switch s {
+	case "projectile", "rocket", "bullet":
+		return WeaponProjectile
+	case "melee", "swing":
+		return WeaponMelee
+	default:
+		return WeaponHitscan
+	}
+}
+
+func (t WeaponType) String() string {
+	switch t {
+	case WeaponProjectile:
+		return "projectile"
+	case WeaponMelee:
+		return "melee"
+	default:
+		return "hitscan"
+	}
+}
+
+// ModWeapon is a custom weapon registered by a mod.
+type ModWeapon struct {
+	ID              int32
+	Name            string
+	Type            WeaponType
+	Damage          float32
+	Range           float32
+	Ammo            int32
+	MaxAmmo         int32
+	FireRate        float32 // shots per second
+	LastShot        float64
+	Recoil          float32
+	Spread          float32
+	ProjectileSpeed float32
+	ProjectileLife  float32
+	ProjectileSize  float32
+	Color           rl.Color
+	Owner           string
+}
+
+// ModTool is a custom tool registered by a mod.
+type ModTool struct {
+	ID            int32
+	Name          string
+	PrimaryDesc   string
+	SecondaryDesc string
+	ReloadDesc    string
+	Color         rl.Color
+	PrimaryHook   string
+	SecondaryHook string
+	ReloadHook    string
+	Owner         string
+}
+
+// ModConstraint is an active box3d joint created by a mod.
+type ModConstraint struct {
+	ID      int32
+	Type    string
+	EntityA int32
+	EntityB int32
+	JointID box3d.JointID
+	Owner   string
+}
+
+// ModParticle is a simple point particle owned by a mod.
+type ModParticle struct {
+	ID      int32
+	Pos     rl.Vector3
+	Vel     rl.Vector3
+	Life    float32
+	MaxLife float32
+	Color   rl.Color
+	Size    float32
+	Gravity float32
+}
+
+// ModProjectile tracks a dynamic body fired by a mod weapon.
+type ModProjectile struct {
+	Entity  *Entity
+	Damage  float32
+	Life    float32
+	MaxLife float32
+	Owner   string
+	Prev    rl.Vector3
+	HitMask uint64
+}
+
+// ModDrawCmd is a queued 2D draw operation.
+type ModDrawCmd struct {
+	Kind      string
+	Text      string
+	X, Y      float32
+	W, H      float32
+	X2, Y2    float32
+	X3, Y3    float32
+	Radius    float32
+	Size      float32
+	Thickness float32
+	Color     rl.Color
+	Filled    bool
+	Segments  int32
+}
+
+// ModDebugCmd is a queued 3D debug draw operation.
+type ModDebugCmd struct {
+	Kind      string
+	From      rl.Vector3
+	To        rl.Vector3
+	Center    rl.Vector3
+	Normal    rl.Vector3
+	Radius    float32
+	Size      rl.Vector3
+	Color     rl.Color
+	Thickness float32
+	Segments  int32
+}
+
+// ------------------------------------------------------------------
+// Game constructor
+// ------------------------------------------------------------------
 
 func NewGame() *Game {
 	g := &Game{
-		rng:         rand.New(rand.NewSource(time.Now().UnixNano())),
-		byBody:      make(map[box3d.BodyID]*Entity),
-		state:       statePlaying,
-		selected:    0,
-		tool:        toolPhysgun,
-		menuToolSel: toolPhysgun,
-		toolMenuSel: toolPhysgun,
-		spawnCat:    "ALL",
-		spawnDist:   defaultPlaceDist,
-		settings:    loadSettings(),
+		rng:             rand.New(rand.NewSource(time.Now().UnixNano())),
+		byBody:          make(map[box3d.BodyID]*Entity),
+		byID:            make(map[int32]*Entity),
+		nextEntityID:    1,
+		state:           statePlaying,
+		selected:        0,
+		tool:            toolPhysgun,
+		menuToolSel:     toolPhysgun,
+		toolMenuSel:     toolPhysgun,
+		spawnCat:        "ALL",
+		spawnDist:       defaultPlaceDist,
+		settings:        loadSettings(),
+		timeScale:       1,
+		activeModWeapon: -1,
+		activeModTool:   -1,
+		menuModToolSel:  -1,
+		sunDir:          rlv(-0.55, 0.82, -0.30),
+		skyTop:          colSkyTop,
+		skyBottom:       colSkyBottom,
 	}
 	loadContentSpawnables()
 	g.font = loadUIFont(&g.fontCustom)
@@ -182,7 +386,15 @@ func NewGame() *Game {
 	} else {
 		g.mods = mm
 	}
-	g.toast("FSBOX ONLINE  //  Q SPAWN  //  C TOOLS  //  F1 MANUAL", colAccent)
+	g.modInputHooks = make(map[int32][]string)
+	g.modMouseHooks = make(map[int32][]string)
+	g.modSounds = make(map[string]rl.Sound)
+	g.modMusic = make(map[string]rl.Music)
+	g.modMusicVol = make(map[string]float32)
+	g.toast("FSBOX ONLINE  //  E SPAWN  //  C TOOLS  //  F1 MANUAL", colAccent)
+	if g.mods != nil {
+		g.mods.FireEvent("game.start", g.engineInfo())
+	}
 	return g
 }
 
@@ -251,9 +463,11 @@ func (g *Game) Close() {
 // ---------------------------------------------------------------------------
 
 func (g *Game) Update(dt float64) {
+	g.frame++
 	g.uiTime += dt
 	g.updateUIInput()
 	g.updateToolAnimation(float32(dt))
+	g.fireInputEvents()
 
 	if g.state == statePlaying {
 		g.updateLook()
@@ -266,11 +480,20 @@ func (g *Game) Update(dt float64) {
 		g.ghostOK = false
 	}
 
+	simDt := dt
+	if g.timeScale < 0 {
+		g.timeScale = 0
+	}
+	if g.timeScale > 10 {
+		g.timeScale = 10
+	}
+	simDt = dt * g.timeScale
+
 	// The world keeps simulating in every state except the explicit pause
 	// menu, so props and effects keep moving while the spawn menu (or any
 	// other overlay) is open.
 	if g.state != statePaused {
-		g.acc += dt
+		g.acc += simDt
 		steps := 0
 		for g.acc >= fixedStep && steps < maxSteps {
 			g.tick(float32(fixedStep))
@@ -280,10 +503,12 @@ func (g *Game) Update(dt float64) {
 		if steps == maxSteps {
 			g.acc = 0
 		}
-		g.updateParticles(float32(dt))
-		g.updateWaves(float32(dt))
+		g.updateParticles(float32(simDt))
+		g.updateWaves(float32(simDt))
+		g.updateModParticles(float32(simDt))
+		g.updateMusic()
 		if g.shake > 0 {
-			g.shake -= dt
+			g.shake -= simDt
 			if g.shake < 0 {
 				g.shake = 0
 			}
@@ -292,7 +517,7 @@ func (g *Game) Update(dt float64) {
 
 	g.updateToasts(float32(dt))
 	if g.mods != nil {
-		g.mods.Tick(g)
+		g.mods.Tick(g, simDt)
 	}
 	g.updateCamera()
 	g.syncCursor()
@@ -545,11 +770,15 @@ func (g *Game) tick(dt float32) {
 		g.updateHeld(dt)
 	}
 	g.world.Step(dt, 2)
+	g.updateProjectiles(dt)
 	g.enforceBounds()
 
 	p := g.player.body.GetPosition()
 	if p.Y < -6 {
 		g.respawnPlayer()
+	}
+	if g.mods != nil {
+		g.mods.FireEvent("game.tick", map[string]any{"dt": dt, "time": g.time})
 	}
 }
 

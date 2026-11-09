@@ -115,6 +115,10 @@ func (g *Game) primaryAction() {
 		return
 	}
 	g.toolKick = 1
+	if g.activeModTool >= 0 {
+		_, _ = g.fireToolAction("tool.primary", nil, "")
+		return
+	}
 	switch g.tool {
 	case toolPhysgun:
 		if g.held != nil {
@@ -143,6 +147,10 @@ func (g *Game) secondaryAction() {
 		return
 	}
 	g.toolKick = 1
+	if g.activeModTool >= 0 {
+		_, _ = g.fireToolAction("tool.secondary", nil, "")
+		return
+	}
 	switch g.tool {
 	case toolPhysgun:
 		if g.held != nil {

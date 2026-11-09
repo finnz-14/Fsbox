@@ -3,10 +3,13 @@ module sandbox3d
 go 1.27.3
 
 require (
+	fsbox.dev/sdk v0.0.0
 	github.com/gataengine/box3d-go v0.0.0-20261019212002-2a00e926a8d9
 	github.com/gen2brain/raylib-go/raylib v0.60.1
 	github.com/tetratelabs/wazero v1.12.0
 )
+
+replace fsbox.dev/sdk => ./sdk/go
 
 require (
 	github.com/ebitengine/purego v0.10.0 // indirect

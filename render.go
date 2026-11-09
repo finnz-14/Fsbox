@@ -13,11 +13,12 @@ func (g *Game) Draw() {
 
 	// Clear both colour and depth. The sky gradient is painted afterwards, so
 	// this only exists to reset the depth buffer for the next 3D pass.
-	rl.ClearBackground(colSkyBottom)
+	rl.ClearBackground(g.skyBottom)
 	g.drawBackground()
 
 	if g.hasShadow && g.settings.Shadows {
-		g.sunCam.Position = rlv(-0.55*40, 0.82*40, -0.30*40)
+		d := normRl(g.sunDir)
+	g.sunCam.Position = rlv(d.X*40, d.Y*40, d.Z*40)
 		g.sunCam.Target = rlv(0, 0, 0)
 		g.sunCam.Up = rlv(0, 1, 0)
 		g.sunCam.Fovy = 80
@@ -54,7 +55,8 @@ func (g *Game) Draw() {
 		if !g.settings.Shadows {
 			lightVP = rl.MatrixIdentity()
 		}
-		lightDir := rlv(0.55, -0.82, 0.30)
+		d := normRl(g.sunDir)
+		lightDir := rlv(-d.X, -d.Y, -d.Z)
 		rl.SetShaderValueMatrix(g.mainShader, locLightVP, lightVP)
 		rl.SetShaderValue(g.mainShader, locLightDir, []float32{lightDir.X, lightDir.Y, lightDir.Z}, rl.ShaderUniformVec3)
 		sp := int32(0)
@@ -82,6 +84,8 @@ func (g *Game) Draw() {
 	g.drawHeldBeam()
 	g.drawWaves()
 	g.drawParticles()
+	g.drawModParticles()
+	g.drawModDebug()
 	rl.EndMode3D()
 
 	// The tool gun is a separate, close-range 3D pass. Drawing it after the
@@ -108,6 +112,7 @@ func (g *Game) Draw() {
 		g.drawToolMenu()
 	}
 	g.drawToasts()
+	g.drawModUI()
 	rl.EndMode2D()
 
 	rl.EndDrawing()
@@ -120,7 +125,7 @@ func (g *Game) Draw() {
 func (g *Game) drawBackground() {
 	w := int32(rl.GetScreenWidth())
 	h := int32(rl.GetScreenHeight())
-	rl.DrawRectangleGradientV(0, 0, w, h, colSkyTop, colSkyBottom)
+	rl.DrawRectangleGradientV(0, 0, w, h, g.skyTop, g.skyBottom)
 }
 
 func (g *Game) drawVignette() {
@@ -159,7 +164,7 @@ func int32Slice(v int32) []float32 {
 
 func (g *Game) drawSun() {
 	// Visible sun along the light direction used for shading/shadows.
-	dir := rlv(-0.55, 0.82, -0.30)
+	dir := g.sunDir
 	l := lenRl(dir)
 	if l < 1e-6 {
 		return
