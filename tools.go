@@ -13,7 +13,8 @@ import (
 type ToolID int
 
 const (
-	toolPhysgun ToolID = iota
+	toolHand ToolID = iota
+	toolPhysgun
 	toolSpawner
 	toolRemover
 	toolImpact
@@ -34,6 +35,12 @@ type ToolDef struct {
 }
 
 var toolDefs = []ToolDef{
+	{
+		Name: "HAND", Short: "HND", Tag: "INTERACT", Color: colAccentHi,
+		Desc:      "Your bare hand. Click UI elements to interact, grab and throw props.",
+		Primary:   "INTERACT / GRAB",
+		Secondary: "THROW",
+	},
 	{
 		Name: "PHYSGUN", Short: "PHY", Tag: "PHYSICS", Color: colAccent,
 		Desc:      "Magnetic gravity manipulator. Holds a body in a stable field and launches it on release.",
@@ -120,6 +127,13 @@ func (g *Game) primaryAction() {
 		return
 	}
 	switch g.tool {
+	case toolHand:
+		// First try to click a UI element (mod UI panel, animation GUI, etc.).
+		if g.clickUIElement() {
+			return
+		}
+		// Otherwise grab the aimed entity.
+		g.grab()
 	case toolPhysgun:
 		if g.held != nil {
 			if g.mods != nil {
@@ -155,6 +169,12 @@ func (g *Game) secondaryAction() {
 		return
 	}
 	switch g.tool {
+	case toolHand:
+		if g.held != nil {
+			g.throwHeld()
+		} else {
+			g.pushAimed()
+		}
 	case toolPhysgun:
 		if g.held != nil {
 			g.throwHeld()
@@ -195,6 +215,113 @@ func (g *Game) secondaryAction() {
 	case toolGravity:
 		g.toggleZeroGravity()
 	}
+}
+
+// clickUIElement checks if the mouse is over any interactive UI element and
+// triggers its click. Returns true if something was clicked.
+func (g *Game) clickUIElement() bool {
+	mouse := g.uiMouse()
+
+	// Mod UI elements.
+	for _, el := range g.modUIElements {
+		rec := rl.Rectangle{X: el.X, Y: el.Y, Width: el.W, Height: el.H}
+		if rl.CheckCollisionPointRec(mouse, rec) {
+			if g.mods != nil {
+				g.mods.FireEvent("ui.click", map[string]any{"id": el.ID, "kind": el.Kind, "label": el.Label})
+				if el.Kind == "button" {
+					g.mods.FireEvent("ui.button_click", map[string]any{"id": el.ID, "label": el.Label})
+				}
+			}
+			return true
+		}
+	}
+
+	// Animation GUI close button and animation rows.
+	if g.animGUIEntity >= 0 {
+		e := g.resolveAnyEntity(g.animGUIEntity)
+		if e != nil && e.HasModel && len(e.Animations) > 0 {
+			screenPos := rl.GetWorldToScreen(e.position(), g.camera)
+			panelW := float32(300)
+			panelH := float32(340)
+			rec := rl.Rectangle{
+				X:      screenPos.X - panelW/2,
+				Y:      screenPos.Y - panelH - 30,
+				Width:  panelW,
+				Height: panelH,
+			}
+			sw := float32(rl.GetScreenWidth())
+			sh := float32(rl.GetScreenHeight())
+			if rec.X < 0 {
+				rec.X = 0
+			}
+			if rec.Y < 0 {
+				rec.Y = 0
+			}
+			if rec.X+panelW > sw {
+				rec.X = sw - panelW
+			}
+			if rec.Y+panelH > sh {
+				rec.Y = sh - panelH
+			}
+
+			// Close button.
+			closeBtn := rl.Rectangle{X: rec.X + rec.Width - 26, Y: rec.Y + 10, Width: 18, Height: 18}
+			if rl.CheckCollisionPointRec(mouse, closeBtn) {
+				g.animGUIEntity = -1
+				return true
+			}
+
+			// Animation rows.
+			startY := rec.Y + 72
+			rowH := float32(26)
+			for i := range e.Animations {
+				row := rl.Rectangle{X: rec.X + 12, Y: startY + float32(i)*rowH, Width: rec.Width - 24, Height: rowH - 3}
+				if rl.CheckCollisionPointRec(mouse, row) {
+					g.playEntityAnim(e, int32(i))
+					return true
+				}
+			}
+
+			// Play/Pause button.
+			btnY := startY + float32(len(e.Animations))*rowH + 14
+			halfW := (rec.Width - 24 - 6) / 2
+			playBtn := rl.Rectangle{X: rec.X + 12, Y: btnY, Width: halfW, Height: 26}
+			if rl.CheckCollisionPointRec(mouse, playBtn) {
+				if len(e.Animations) > 0 {
+					e.AnimPlaying = !e.AnimPlaying
+					if e.AnimPlaying && e.AnimFrame >= float32(e.Animations[e.AnimCurrent].KeyframeCount-1) {
+						e.AnimFrame = 0
+					}
+				}
+				return true
+			}
+
+			// Stop button.
+			stopBtn := rl.Rectangle{X: rec.X + 12 + halfW + 6, Y: btnY, Width: halfW, Height: 26}
+			if rl.CheckCollisionPointRec(mouse, stopBtn) {
+				e.AnimPlaying = false
+				e.AnimFrame = 0
+				return true
+			}
+
+			// Speed slider track.
+			slY := btnY + 34
+			slRec := rl.Rectangle{X: rec.X + 12, Y: slY, Width: rec.Width - 24, Height: 4}
+			if rl.CheckCollisionPointRec(mouse, slRec) {
+				t := (mouse.X - (rec.X + 12)) / (rec.Width - 24)
+				if t < 0 {
+					t = 0
+				}
+				if t > 1 {
+					t = 1
+				}
+				e.AnimSpeed = 0.25 + t*(2.0-0.25)
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (g *Game) spawnPoint() rl.Vector3 {

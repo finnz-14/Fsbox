@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	box3d "github.com/gataengine/box3d-go"
@@ -12,7 +12,7 @@ const (
 	flySprint    = 19.0
 	flyVertical  = 9.0
 	jumpVelocity = 8.6
-	eyeHeight    = 0.68
+	eyeHeight    = 0.55
 )
 
 // Player is a dynamic capsule with locked rotation. Box3D resolves all of its
@@ -193,3 +193,4 @@ func (p *Player) respawn(g *Game) {
 	p.coyote = 0
 	p.jumpBuffer = 0
 }
+

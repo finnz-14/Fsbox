@@ -11,7 +11,6 @@ func init() {
 		}
 		fsbox.SetEntityColor(e.Entity.ID, fsbox.RandomColor())
 		fsbox.Log("crate grabbed: " + e.Entity.Name)
-
 	})
 }
 

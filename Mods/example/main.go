@@ -92,13 +92,11 @@ func main() {
 	}()
 	fmt.Fprintln(os.Stderr, "[go mod] worker starting")
 
-	// Reader goroutine.
 	go func() {
 		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.TrimSpace(line) == "" {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
 				continue
 			}
 			var msg RPCMessage
@@ -132,15 +130,15 @@ func main() {
 		switch msg.Method {
 		case "mod.init":
 			fmt.Fprintln(os.Stderr, "[go mod] init")
-			// Example: spawn a box via the engine.
 			res, err := engineCall("entity.spawn", map[string]any{
 				"kind": "box",
 				"position": map[string]float32{"x": 0, "y": 3, "z": 0},
 				"color":    map[string]any{"r": 100, "g": 200, "b": 100, "a": 255},
 			})
 			fmt.Fprintf(os.Stderr, "[go mod] spawn result: %s err=%v\n", string(res), err)
-			sendResponse(msg.ID, map[string]string{"status": "ok", "mod": "go.example.mod"})
-
+			if msg.ID != nil {
+				sendResponse(msg.ID, map[string]string{"status": "ok", "mod": "go.example.mod"})
+			}
 		case "mod.tick":
 			// notification; no response
 		case "mod.event":

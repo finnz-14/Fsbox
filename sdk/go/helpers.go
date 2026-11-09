@@ -279,6 +279,61 @@ func AudioReady() (bool, error) {
 }
 
 // ---------------------------------------------------------------------------
+// Animations
+// ---------------------------------------------------------------------------
+
+type AnimationInfo struct {
+	Index     int32
+	Name      string
+	Keyframes int32
+	Bones     int32
+	Current   bool
+	Playing   bool
+	Frame     float32
+	Speed     float32
+}
+
+func GetAnimations(id int32) ([]AnimationInfo, error) {
+	raw, err := Call("entity.get_animations", map[string]any{"id": id})
+	if err != nil {
+		return nil, err
+	}
+	var out []AnimationInfo
+	_ = json.Unmarshal(raw, &out)
+	return out, nil
+}
+
+func PlayAnimation(id int32, animName string, speed float32) error {
+	_, err := Call("entity.play_animation", map[string]any{"id": id, "anim": animName, "speed": speed})
+	return err
+}
+
+func PlayAnimationByIndex(id, animIndex int32, speed float32) error {
+	_, err := Call("entity.play_animation", map[string]any{"id": id, "anim_index": animIndex, "speed": speed})
+	return err
+}
+
+func PauseAnimation(id int32) error {
+	_, err := Call("entity.pause_animation", map[string]any{"id": id})
+	return err
+}
+
+func ResumeAnimation(id int32) error {
+	_, err := Call("entity.resume_animation", map[string]any{"id": id})
+	return err
+}
+
+func StopAnimation(id int32) error {
+	_, err := Call("entity.stop_animation", map[string]any{"id": id})
+	return err
+}
+
+func SetAnimationSpeed(id int32, speed float32) error {
+	_, err := Call("entity.set_animation_speed", map[string]any{"id": id, "speed": speed})
+	return err
+}
+
+// ---------------------------------------------------------------------------
 // Player model
 // ---------------------------------------------------------------------------
 

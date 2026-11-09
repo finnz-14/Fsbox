@@ -1,18 +1,23 @@
 package main
 
 import (
+	"encoding/json"
+
 	fsbox "fsbox.dev/sdk"
 )
 
 var (
-	jennyModel  int32
 	jennyEntity int32
 	spawned     bool
 )
 
+type spawnResult struct {
+	ID int32 `json:"id"`
+}
+
 func init() {
 	fsbox.On("game.start", func(e fsbox.Event) {
-		fsbox.Log("[Jenny] mod ready. Jenny will spawn on first tick.")
+		fsbox.Log("[Jenny] mod ready.")
 	})
 
 	fsbox.OnTick(func() {
@@ -21,24 +26,26 @@ func init() {
 		}
 		spawned = true
 
-		// Load Jenny's model from the Content folder.
-		model, err := fsbox.LoadModel("Content/Spawnables/Jenny/Jenny/jennynude.gltf")
-		if err != nil {
-			fsbox.Log("[Jenny] failed to load model: " + err.Error())
-			return
-		}
-		jennyModel = model
-
-		// Spawn Jenny near the player.
-		id, err := fsbox.SpawnModelEntity(model, fsbox.Vec3{X: 0, Y: 2, Z: 4}, fsbox.Color{R: 255, G: 255, B: 255, A: 255})
+		// Spawn Jenny by preset name — animations come from the preset.
+		raw, err := fsbox.Call("entity.spawn", map[string]any{
+			"preset_name": "Jenny",
+			"position":    map[string]float32{"x": 0, "y": 2, "z": 4},
+			"color":       map[string]any{"r": 255, "g": 255, "b": 255, "a": 255},
+		})
 		if err != nil {
 			fsbox.Log("[Jenny] failed to spawn: " + err.Error())
 			return
 		}
-		jennyEntity = id
 
-		fsbox.Log("[Jenny] spawned. Walk up to her to see the animation GUI.")
-		fsbox.Log("[Jenny] Note: this glTF uses node animations; raylib extracts 0 skeletal animations, so the animation GUI will be empty.")
+		var result spawnResult
+		if err := json.Unmarshal(raw, &result); err != nil {
+			fsbox.Log("[Jenny] failed to parse spawn result: " + err.Error())
+			return
+		}
+		jennyEntity = result.ID
+
+		fsbox.Log("[Jenny] spawned at (0, 2, 4). Walk up to her to see the animation GUI.")
+		fsbox.Log("[Jenny] Equip the HAND tool (slot 1) to click animations.")
 	})
 }
 

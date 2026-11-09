@@ -313,13 +313,13 @@ func TestRemoveInRadiusOnlyDeletesNearbyProps(t *testing.T) {
 
 func TestToolCyclingWraps(t *testing.T) {
 	g := newHeadlessGame(t)
-	g.equipTool(toolPhysgun)
+	g.equipTool(toolHand)
 	g.cycleTool(-1)
 	if g.tool != toolCount-1 {
 		t.Fatalf("cycling back from the first tool gave %d, want %d", g.tool, toolCount-1)
 	}
 	g.cycleTool(1)
-	if g.tool != toolPhysgun {
+	if g.tool != toolHand {
 		t.Fatalf("cycling forward wrapped to %d, want 0", g.tool)
 	}
 }
