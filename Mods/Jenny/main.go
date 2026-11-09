@@ -17,12 +17,10 @@ var (
 	animSpeed   float32 = 1.0
 	spawned     bool
 
-	uiAll       []int32
-	uiPanel     int32
-	uiCloseBtn  int32
-	uiPlayBtn   int32
-	uiStopBtn   int32
-	uiAnimBtns  []int32
+	panelID     int32
+	btnIDs      []int32 // animation buttons, parallel to animations slice
+	playBtnID   int32
+	stopBtnID   int32
 	animations  []fsbox.AnimationInfo
 )
 
@@ -30,6 +28,7 @@ type eventData struct {
 	ID    int32  `json:"id"`
 	Kind  string `json:"kind"`
 	Label string `json:"label"`
+	Panel int32  `json:"panel"`
 }
 
 func init() {
@@ -68,32 +67,29 @@ func init() {
 		}
 		animations = anims
 
-		// Auto-open GUI when player approaches Jenny and looks at her.
+		// Auto-open billboard GUI when player approaches Jenny and looks at her.
 		player, err := fsbox.GetPlayerInfo()
 		if err == nil && jennyEntity > 0 {
-			// Get Jenny's actual position from the entity.
-			eInfo, err := fsbox.GetEntity(jennyEntity)
+			ent, err := fsbox.GetEntity(jennyEntity)
 			if err == nil {
-				jennyPos := eInfo.Position
-				// Distance check.
+				jennyPos := ent.Position
 				dx := jennyPos.X - player.Position.X
 				dy := jennyPos.Y - player.Position.Y
 				dz := jennyPos.Z - player.Position.Z
 				dist := float32(math.Sqrt(float64(dx*dx + dy*dy + dz*dz)))
-				// Dot product: is Jenny in front of the player?
 				toJenny := fsbox.Vec3{X: jennyPos.X - player.Position.X, Y: jennyPos.Y - player.Position.Y, Z: jennyPos.Z - player.Position.Z}
 				toJenny = fsbox.Vec3{X: toJenny.X / dist, Y: toJenny.Y / dist, Z: toJenny.Z / dist}
 				dot := player.Forward.X*toJenny.X + player.Forward.Y*toJenny.Y + player.Forward.Z*toJenny.Z
 
 				if dist < 6.0 && dot > 0.5 && !guiOpen {
 					guiOpen = true
-					fsbox.SetCursorLocked(false)
-					buildUI()
-					fsbox.Toast("Jenny GUI opened - click animations to play", fsbox.Color{R: 230, G: 166, B: 66, A: 255})
+					fsbox.Toast("Jenny GUI - use hand tool to click", fsbox.Color{R: 230, G: 166, B: 66, A: 255})
+					buildBillboard()
 				} else if (dist > 7.0 || dot < 0.3) && guiOpen {
 					guiOpen = false
-					fsbox.SetCursorLocked(true)
-					cleanupUI()
+					fsbox.ClearBillboardPanels()
+					panelID = 0
+					btnIDs = nil
 					fsbox.Toast("Jenny GUI closed", fsbox.Color{R: 160, G: 60, B: 60, A: 255})
 				}
 			}
@@ -104,32 +100,13 @@ func init() {
 		if pressed {
 			guiOpen = !guiOpen
 			if guiOpen {
-				fsbox.SetCursorLocked(false)
-				buildUI()
-				fsbox.Log("[Jenny] GUI opened (" + fmt.Sprint(len(animations)) + " animations).")
+				fsbox.Toast("Jenny GUI - use hand tool to click", fsbox.Color{R: 230, G: 166, B: 66, A: 255})
+				buildBillboard()
 			} else {
-				fsbox.SetCursorLocked(true)
-				cleanupUI()
+				fsbox.ClearBillboardPanels()
+				panelID = 0
+				btnIDs = nil
 				fsbox.Log("[Jenny] GUI closed.")
-			}
-		}
-
-		if guiOpen {
-			// Mouse wheel scroll.
-			wheel, _ := fsbox.InputWheel()
-			if wheel != 0 {
-				scrollOff -= wheel * 24
-				if scrollOff < 0 {
-					scrollOff = 0
-				}
-				maxScroll := float32(len(animations))*26 - 200
-				if maxScroll < 0 {
-					maxScroll = 0
-				}
-				if scrollOff > maxScroll {
-					scrollOff = maxScroll
-				}
-				updatePanelPosition()
 			}
 		}
 	})
@@ -140,222 +117,94 @@ func init() {
 			return
 		}
 
-		if d.ID == uiCloseBtn {
-			guiOpen = false
-			fsbox.SetCursorLocked(true)
-			cleanupUI()
-			fsbox.Log("[Jenny] GUI closed.")
+		// Only handle billboard button clicks
+		if d.Kind != "billboard_button" {
 			return
 		}
 
-		if d.ID == uiPlayBtn {
+		// Play button.
+		if d.ID == playBtnID {
 			if selAnim >= 0 && selAnim < int32(len(animations)) {
 				if err := fsbox.PlayAnimationByIndex(jennyEntity, selAnim, animSpeed); err != nil {
 					fsbox.Log("[Jenny] play failed: " + err.Error())
 				} else {
-					fsbox.Log("[Jenny] playing index " + strconv.Itoa(int(selAnim)) + " = " + animations[selAnim].Name)
+					fsbox.Log("[Jenny] playing " + strconv.Itoa(int(selAnim)) + " = " + animations[selAnim].Name)
 				}
 			}
 			return
 		}
 
-		if d.ID == uiStopBtn {
+		// Stop button.
+		if d.ID == stopBtnID {
 			if err := fsbox.StopAnimation(jennyEntity); err != nil {
 				fsbox.Log("[Jenny] stop failed: " + err.Error())
 			}
 			return
 		}
 
-		for i, btnID := range uiAnimBtns {
+		// Animation selection buttons.
+		for i, btnID := range btnIDs {
 			if d.ID == btnID {
 				selAnim = int32(i)
-				fsbox.Log("[Jenny] selected index " + strconv.Itoa(i) + " = " + animations[i].Name)
+				fsbox.Log("[Jenny] selected " + strconv.Itoa(i) + " = " + animations[i].Name)
 				return
 			}
 		}
 	})
 }
 
-// buildUI creates all UI elements once when the GUI opens.
-func buildUI() {
-	cleanupUI()
-	uiAll = uiAll[:0]
-	uiAnimBtns = uiAnimBtns[:0]
+// buildBillboard creates the 3D billboard panel beside Jenny.
+func buildBillboard() {
+	fsbox.ClearBillboardPanels()
+	panelID = 0
+	btnIDs = nil
 
-	screen, err := fsbox.WorldToScreen(fsbox.Vec3{X: 0, Y: 3, Z: 4})
+	// Panel floats 1 meter to the right of Jenny, at head height.
+	panel, err := fsbox.AddBillboardPanel(0, 3, 4, 1.6, 1.2)
 	if err != nil {
-		fsbox.Log("[Jenny] world_to_screen failed: " + err.Error())
+		fsbox.Log("[Jenny] add billboard panel failed: " + err.Error())
 		return
 	}
+	panelID = panel
 
-	// Position panel to the right of Jenny on screen, clamped to screen bounds.
-	sw := float32(1280) // default screen width
-	sh := float32(720)  // default screen height
-	panelW := float32(240)
-	panelH := float32(340)
+	// Title text at top of panel.
+	fsbox.AddBillboardText(panelID, -0.7, 0.45, "Jenny", 14, fsbox.Color{R: 230, G: 166, B: 66, A: 255})
 
-	px := screen.X + 60
-	if px+panelW > sw {
-		px = screen.X - panelW - 10
-	}
-	if px < 0 {
-		px = 10
-	}
-	py := screen.Y - panelH/2
-	if py < 0 {
-		py = 10
-	}
-	if py+panelH > sh {
-		py = sh - panelH - 10
-	}
-
-	// Panel background.
-	panel, _ := fsbox.AddButton(px, py, panelW, panelH, "", fsbox.Color{R: 20, G: 24, B: 30, A: 230})
-	uiPanel = panel
-	uiAll = append(uiAll, panel)
-
-	// Close button (top-right of panel).
-	closeBtn, _ := fsbox.AddButton(px+panelW-30, py+8, 22, 22, "X", fsbox.Color{R: 160, G: 60, B: 60, A: 255})
-	uiCloseBtn = closeBtn
-	uiAll = append(uiAll, closeBtn)
-
-	// Title.
-	fsbox.Call("ui.draw_text", map[string]any{
-		"text": "Jenny Animations",
-		"x":    px + 10,
-		"y":    py + 14,
-		"size": 16,
-		"color": map[string]any{"r": 230, "g": 166, "b": 66, "a": 255},
-	})
-
-	// Create animation buttons (visible ones based on scroll).
-	btnW := float32(200)
-	btnH := float32(22)
-	gap := float32(4)
-	startY := py + 44
+	// Animation buttons - arranged vertically on the panel.
+	btnIDs = nil
+	btnW := float32(1.3)
+	btnH := float32(0.07)
+	gap := float32(0.01)
+	startY := float32(0.3)
 
 	for i := int32(0); i < int32(len(animations)); i++ {
-		animY := startY + float32(i)*(btnH+gap) - scrollOff
-		if animY+btnH < py+40 || animY > py+panelH-40 {
+		btnY := startY - float32(i)*(btnH+gap)
+		if btnY < -0.5 {
+			break // don't fit more buttons
+		}
+		btn, err := fsbox.AddBillboardButton(panelID, 0, btnY, btnW, btnH, animations[i].Name, fsbox.Color{R: 40, G: 45, B: 50, A: 230})
+		if err != nil {
+			fsbox.Log("[Jenny] add button failed: " + err.Error())
 			continue
 		}
-		btn, _ := fsbox.AddButton(px+10, animY, btnW, btnH, animations[i].Name, fsbox.Color{R: 40, G: 45, B: 50, A: 255})
-		uiAnimBtns = append(uiAnimBtns, btn)
-		uiAll = append(uiAll, btn)
+		btnIDs = append(btnIDs, btn)
 	}
 
-	// Play / Stop buttons at bottom.
-	playY := py + panelH - 40
-	play, _ := fsbox.AddButton(px+10, playY, 105, 30, "PLAY", fsbox.Color{R: 60, G: 120, B: 60, A: 255})
-	uiPlayBtn = play
-	uiAll = append(uiAll, play)
-
-	stop, _ := fsbox.AddButton(px+panelW-115, playY, 105, 30, "STOP", fsbox.Color{R: 160, G: 60, B: 60, A: 255})
-	uiStopBtn = stop
-	uiAll = append(uiAll, stop)
-
-	// Selected animation label.
-	if selAnim >= 0 && selAnim < int32(len(animations)) {
-		fsbox.Call("ui.draw_text", map[string]any{
-			"text": "Selected: " + animations[selAnim].Name,
-			"x":    px + 10,
-			"y":    playY + 34,
-			"size": 12,
-			"color": map[string]any{"r": 200, "g": 200, "b": 200, "a": 255},
-		})
-	}
-
-	fsbox.Log("[Jenny] UI built with " + fmt.Sprint(len(animations)) + " animations")
-}
-
-// updatePanelPosition moves the panel to follow Jenny's screen position.
-func updatePanelPosition() {
-	screen, err := fsbox.WorldToScreen(fsbox.Vec3{X: 0, Y: 3, Z: 4})
+	// Play button at bottom left.
+	playBtn, err := fsbox.AddBillboardButton(panelID, -0.55, -0.5, 0.45, 0.06, "PLAY", fsbox.Color{R: 60, G: 120, B: 60, A: 230})
 	if err != nil {
-		return
+		fsbox.Log("[Jenny] add play button failed: " + err.Error())
 	}
+	playBtnID = playBtn
 
-	sw := float32(1280)
-	sh := float32(720)
-	panelW := float32(240)
-	panelH := float32(340)
+	// Stop button at bottom right.
+	stopBtn, err := fsbox.AddBillboardButton(panelID, 0.55, -0.5, 0.45, 0.06, "STOP", fsbox.Color{R: 160, G: 60, B: 60, A: 230})
+	if err != nil {
+		fsbox.Log("[Jenny] add stop button failed: " + err.Error())
+	}
+	stopBtnID = stopBtn
 
-	px := screen.X + 60
-	if px+panelW > sw {
-		px = screen.X - panelW - 10
-	}
-	if px < 0 {
-		px = 10
-	}
-	py := screen.Y - panelH/2
-	if py < 0 {
-		py = 10
-	}
-	if py+panelH > sh {
-		py = sh - panelH - 10
-	}
-
-	if uiPanel != 0 {
-		fsbox.Call("ui.set_element", map[string]any{
-			"id": uiPanel,
-			"x":  &px, "y":  &py,
-			"w":  float32Ptr(panelW), "h": float32Ptr(panelH),
-		})
-	}
-	if uiCloseBtn != 0 {
-		cx := px + panelW - 30
-		cy := py + 8
-		fsbox.Call("ui.set_element", map[string]any{"id": uiCloseBtn, "x": &cx, "y": &cy})
-	}
-
-	// Update animation button positions.
-	btnH := float32(22)
-	gap := float32(4)
-	startY := py + 44
-
-	for i, btnID := range uiAnimBtns {
-		if i >= len(animations) {
-			continue
-		}
-		animY := startY + float32(i)*(btnH+gap) - scrollOff
-		if animY+btnH < py+40 || animY > py+panelH-40 {
-			fsbox.Call("ui.set_element", map[string]any{"id": btnID, "x": float32Ptr(-9999), "y": float32Ptr(-9999)})
-			continue
-		}
-		bx := px + 10
-		by := animY
-		fsbox.Call("ui.set_element", map[string]any{"id": btnID, "x": &bx, "y": &by})
-	}
-
-	if uiPlayBtn != 0 {
-		playY := py + panelH - 40
-		fsbox.Call("ui.set_element", map[string]any{"id": uiPlayBtn, "x": &px, "y": &playY})
-	}
-	if uiStopBtn != 0 {
-		playY := py + panelH - 40
-		sx := px + panelW - 115
-		sy := playY
-		fsbox.Call("ui.set_element", map[string]any{"id": uiStopBtn, "x": &sx, "y": &sy})
-	}
-}
-
-// cleanupUI removes all UI elements created by this mod.
-func cleanupUI() {
-	for _, id := range uiAll {
-		fsbox.Call("ui.remove_element", map[string]any{"id": id})
-	}
-	uiAll = uiAll[:0]
-	uiAnimBtns = uiAnimBtns[:0]
-	uiPanel = 0
-	uiCloseBtn = 0
-	uiPlayBtn = 0
-	uiStopBtn = 0
-	selAnim = -1
-	scrollOff = 0
-}
-
-func float32Ptr(v float32) *float32 {
-	return &v
+	fsbox.Log("[Jenny] billboard built with " + fmt.Sprint(len(animations)) + " animations")
 }
 
 func main() {}

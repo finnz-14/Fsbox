@@ -137,7 +137,12 @@ func (g *Game) primaryAction() {
 			g.toast("RELEASED", colMuted)
 			return
 		}
-		// First try to click a UI element (mod UI panel, animation GUI, etc.).
+		// Raycast against 3D billboards first - if crosshair is over a
+		// billboard button, trigger its click instead of grabbing.
+		if g.handRaycastBillboard() {
+			return
+		}
+		// First try to click a 2D UI element (mod UI panel, etc.).
 		if g.clickUIElement() {
 			return
 		}
@@ -246,6 +251,26 @@ func (g *Game) clickUIElement() bool {
 	}
 
 	return false
+}
+
+// handRaycastBillboard raycasts from the camera and checks if the crosshair
+// hits a 3D billboard button. Returns true if a billboard button was clicked.
+func (g *Game) handRaycastBillboard() bool {
+	if g.player == nil || len(g.modBillboards) == 0 {
+		return false
+	}
+	camPos := g.camera.Position
+	camFwd := g.cameraForward()
+	panelID, elemID := g.raycastBillboard(camPos, camFwd, 10)
+	if elemID == 0 {
+		return false
+	}
+	// Fire the click event for the billboard element
+	if g.mods != nil {
+		g.mods.FireEvent("ui.click", map[string]any{"id": elemID, "kind": "billboard_button", "panel": panelID})
+		g.mods.FireEvent("ui.button_click", map[string]any{"id": elemID, "panel": panelID})
+	}
+	return true
 }
 
 func (g *Game) spawnPoint() rl.Vector3 {

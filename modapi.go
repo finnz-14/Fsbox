@@ -1333,6 +1333,16 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 	case "ui.clear":
 		g.modDrawQueue = nil
 		return true, nil
+	case "ui.billboard_add":
+		return g.apiBillboardAdd(owner, args)
+	case "ui.billboard_button":
+		return g.apiBillboardButton(args)
+	case "ui.billboard_text":
+		return g.apiBillboardText(args)
+	case "ui.billboard_remove":
+		return g.apiBillboardRemove(args)
+	case "ui.billboard_clear":
+		return g.apiBillboardClear(owner, args)
 
 	// ----- render ---------------------------------------------------------
 	case "render.draw_line_3d":

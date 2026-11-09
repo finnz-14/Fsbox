@@ -898,6 +898,8 @@ func permissionForCommand(cmd string) string {
 		return "shader"
 	case strings.HasPrefix(cmd, "ui.add_element"), strings.HasPrefix(cmd, "ui.remove_element"), strings.HasPrefix(cmd, "ui.set_element"), strings.HasPrefix(cmd, "ui.clear_elements"):
 		return "ui.interact"
+	case strings.HasPrefix(cmd, "ui.billboard_"):
+		return "ui.interact"
 	default:
 		return "engine.read"
 	}

@@ -87,6 +87,7 @@ func (g *Game) Draw() {
 	g.drawModParticles()
 	g.drawModDebug()
 	g.drawPlayerModel()
+	g.drawBillboards()
 	rl.EndMode3D()
 
 	// The tool gun is a separate, close-range 3D pass. Drawing it after the

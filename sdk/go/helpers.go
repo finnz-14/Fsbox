@@ -206,6 +206,63 @@ func SetUIElement(id int32, x, y, w, h *float32, label *string, color *Color, va
 }
 
 // ---------------------------------------------------------------------------
+// 3D Billboard panels
+// ---------------------------------------------------------------------------
+
+func AddBillboardPanel(x, y, z, width, height float32) (int32, error) {
+	raw, err := Call("ui.billboard_add", map[string]any{
+		"x": x, "y": y, "z": z,
+		"face_x": 0, "face_y": 0, "face_z": 0, // engine auto-faces camera
+		"right_x": 0, "right_y": 0, "right_z": 0,
+		"up_x": 0, "up_y": 0, "up_z": 0,
+		"width": width, "height": height,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var id int32
+	_ = json.Unmarshal(raw, &id)
+	return id, nil
+}
+
+func AddBillboardButton(panelID int32, x, y, w, h float32, label string, color Color) (int32, error) {
+	raw, err := Call("ui.billboard_button", map[string]any{
+		"panel": panelID, "x": x, "y": y, "w": w, "h": h,
+		"label": label, "color": color,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var id int32
+	_ = json.Unmarshal(raw, &id)
+	return id, nil
+}
+
+func AddBillboardText(panelID int32, x, y float32, label string, size float32, color Color) (int32, error) {
+	raw, err := Call("ui.billboard_text", map[string]any{
+		"panel": panelID, "x": x, "y": y,
+		"label": label, "size": size, "color": color,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var id int32
+	_ = json.Unmarshal(raw, &id)
+	return id, nil
+}
+
+func RemoveBillboardPanel(panelID int32) error {
+	_, err := Call("ui.billboard_remove", map[string]any{"panel": panelID})
+	return err
+}
+
+func ClearBillboardPanels() error {
+	_, err := Call("ui.billboard_clear", nil)
+	return err
+}
+
+
+// ---------------------------------------------------------------------------
 // Camera
 // ---------------------------------------------------------------------------
 

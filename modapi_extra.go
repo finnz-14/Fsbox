@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -460,3 +461,325 @@ func (g *Game) drawPlayerModel() {
 
 // suppress unused
 var _ = box3d.QuatIdentity
+
+// ---------------------------------------------------------------------------
+// Billboard (3D panel) API
+// ---------------------------------------------------------------------------
+
+func (g *Game) apiBillboardAdd(owner string, args json.RawMessage) (any, error) {
+	var a struct {
+		X, Y, Z float32 `json:"x","y","z"`
+		FX, FY, FZ float32 `json:"face_x","face_y","face_z"`
+		RX, RY, RZ float32 `json:"right_x","right_y","right_z"`
+		UX, UY, UZ float32 `json:"up_x","up_y","up_z"`
+		Width  float32 `json:"width"`
+		Height float32 `json:"height"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return nil, err
+	}
+	if a.Width <= 0 {
+		a.Width = 1
+	}
+	if a.Height <= 0 {
+		a.Height = 1
+	}
+	face := normRl(rlv(a.FX, a.FY, a.FZ))
+	right := normRl(rlv(a.RX, a.RY, a.RZ))
+	up := normRl(rlv(a.UX, a.UY, a.UZ))
+	g.modBillboardLast++
+	b := &ModBillboard{
+		ID:      g.modBillboardLast,
+		Owner:   owner,
+		Pos:     rlv(a.X, a.Y, a.Z),
+		Face:    face,
+		Right:   right,
+		Up:      up,
+		Width:   a.Width,
+		Height:  a.Height,
+		Elements: []*ModBillboardElement{},
+	}
+	g.modBillboards = append(g.modBillboards, b)
+	return b.ID, nil
+}
+
+func (g *Game) apiBillboardButton(args json.RawMessage) (any, error) {
+	var a struct {
+		Panel   int32   `json:"panel"`
+		X, Y    float32 `json:"x","y"`
+		W, H    float32 `json:"w","h"`
+		Label   string  `json:"label"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return nil, err
+	}
+	b := g.findBillboard(a.Panel)
+	if b == nil {
+		return nil, fmt.Errorf("billboard panel %d not found", a.Panel)
+	}
+	if a.W <= 0 {
+		a.W = 0.1
+	}
+	if a.H <= 0 {
+		a.H = 0.05
+	}
+	g.modBillboardLast++
+	el := &ModBillboardElement{
+		ID:       g.modBillboardLast,
+		Kind:     "button",
+		Label:    a.Label,
+		X:        a.X, Y: a.Y,
+		W:        a.W, H: a.H,
+		Color:    colAccent,
+		TextColor: colDark,
+		TextSize: 12,
+	}
+	b.Elements = append(b.Elements, el)
+	return el.ID, nil
+}
+
+func (g *Game) apiBillboardText(args json.RawMessage) (any, error) {
+	var a struct {
+		Panel   int32   `json:"panel"`
+		X, Y    float32 `json:"x","y"`
+		Label   string  `json:"label"`
+		Size    float32 `json:"size"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return nil, err
+	}
+	b := g.findBillboard(a.Panel)
+	if b == nil {
+		return nil, fmt.Errorf("billboard panel %d not found", a.Panel)
+	}
+	if a.Size <= 0 {
+		a.Size = 12
+	}
+	g.modBillboardLast++
+	el := &ModBillboardElement{
+		ID:       g.modBillboardLast,
+		Kind:     "text",
+		Label:    a.Label,
+		X:        a.X, Y: a.Y,
+		Color:    colText,
+		TextColor: colText,
+		TextSize: a.Size,
+	}
+	b.Elements = append(b.Elements, el)
+	return el.ID, nil
+}
+
+func (g *Game) apiBillboardRemove(args json.RawMessage) (any, error) {
+	var a struct {
+		Panel int32 `json:"panel"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return nil, err
+	}
+	for i, b := range g.modBillboards {
+		if b.ID == a.Panel {
+			g.modBillboards = append(g.modBillboards[:i], g.modBillboards[i+1:]...)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (g *Game) apiBillboardClear(owner string, args json.RawMessage) (any, error) {
+	g.modBillboards = nil
+	return true, nil
+}
+
+func (g *Game) findBillboard(id int32) *ModBillboard {
+	for _, b := range g.modBillboards {
+		if b.ID == id {
+			return b
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Billboard raycast - checks if a ray hits any billboard panel
+// Returns the panel ID and element ID hit, or 0,0 if nothing
+// ---------------------------------------------------------------------------
+
+func (g *Game) raycastBillboard(origin, dir rl.Vector3, maxDist float32) (int32, int32) {
+	if len(g.modBillboards) == 0 {
+		return 0, 0
+	}
+	bestPanel := int32(0)
+	bestElem := int32(0)
+	bestDist := maxDist
+
+	for _, b := range g.modBillboards {
+		// Ray-plane intersection: panel plane at b.Pos with normal b.Face
+		denom := b.Face.X*dir.X + b.Face.Y*dir.Y + b.Face.Z*dir.Z
+		if float32(math.Abs(float64(denom))) < 1e-6 {
+			continue // ray parallel to panel
+		}
+		t := ((b.Pos.X-origin.X)*b.Face.X + (b.Pos.Y-origin.Y)*b.Face.Y + (b.Pos.Z-origin.Z)*b.Face.Z) / denom
+		if t < 0.01 || t > bestDist {
+			continue
+		}
+		// Hit point on plane
+		hitX := origin.X + dir.X*t
+		hitY := origin.Y + dir.Y*t
+		hitZ := origin.Z + dir.Z*t
+		hit := rlv(hitX, hitY, hitZ)
+
+		// Convert hit point to panel local coordinates
+		toHit := rlv(hit.X-b.Pos.X, hit.Y-b.Pos.Y, hit.Z-b.Pos.Z)
+		localX := toHit.X*b.Right.X + toHit.Y*b.Right.Y + toHit.Z*b.Right.Z
+		localY := toHit.X*b.Up.X + toHit.Y*b.Up.Y + toHit.Z*b.Up.Z
+
+		// Check if hit is within panel bounds
+		if localX < -b.Width/2 || localX > b.Width/2 {
+			continue
+		}
+		if localY < -b.Height/2 || localY > b.Height/2 {
+			continue
+		}
+
+		// Check elements
+		hitElem := int32(0)
+		for _, el := range b.Elements {
+			if el.Kind != "button" {
+				continue
+			}
+			if localX >= el.X-el.W/2 && localX <= el.X+el.W/2 &&
+				localY >= el.Y-el.H/2 && localY <= el.Y+el.H/2 {
+				hitElem = el.ID
+				break
+			}
+		}
+
+		if t < bestDist {
+			bestDist = t
+			bestPanel = b.ID
+			bestElem = hitElem
+		}
+	}
+	return bestPanel, bestElem
+}
+
+// ---------------------------------------------------------------------------
+// Billboard rendering
+// ---------------------------------------------------------------------------
+
+func (g *Game) drawBillboards() {
+	if len(g.modBillboards) == 0 {
+		return
+	}
+	camPos := g.camera.Position
+
+	for _, b := range g.modBillboards {
+		// Billboard always faces camera
+		toCam := rlv(camPos.X-b.Pos.X, camPos.Y-b.Pos.Y, camPos.Z-b.Pos.Z)
+		dist := lenRl(toCam)
+		if dist < 0.01 {
+			continue
+		}
+		toCam = normRl(toCam)
+		// Face the camera
+		face := toCam
+		// Compute right and up for the panel
+		worldUp := rlv(0, 1, 0)
+		right := normRl(rlv(
+			worldUp.Y*face.Z-worldUp.Z*face.Y,
+			worldUp.Z*face.X-worldUp.X*face.Z,
+			worldUp.X*face.Y-worldUp.Y*face.X,
+		))
+		if lenRl(right) < 1e-6 {
+			right = rlv(1, 0, 0)
+		}
+		up := normRl(rlv(
+			face.Y*right.Z-face.Z*right.Y,
+			face.Z*right.X-face.X*right.Z,
+			face.X*right.Y-face.Y*right.X,
+		))
+
+		// Draw panel background as a quad
+		hw := b.Width / 2
+		hh := b.Height / 2
+		cornerTL := rlv(b.Pos.X+right.X*(-hw)+up.X*(-hh), b.Pos.Y+right.Y*(-hw)+up.Y*(-hh), b.Pos.Z+right.Z*(-hw)+up.Z*(-hh))
+		cornerTR := rlv(b.Pos.X+right.X*(hw)+up.X*(-hh), b.Pos.Y+right.Y*(hw)+up.Y*(-hh), b.Pos.Z+right.Z*(hw)+up.Z*(-hh))
+		cornerBR := rlv(b.Pos.X+right.X*(hw)+up.X*(hh), b.Pos.Y+right.Y*(hw)+up.Y*(hh), b.Pos.Z+right.Z*(hw)+up.Z*(hh))
+		cornerBL := rlv(b.Pos.X+right.X*(-hw)+up.X*(hh), b.Pos.Y+right.Y*(-hw)+up.Y*(hh), b.Pos.Z+right.Z*(-hw)+up.Z*(hh))
+
+		rl.DrawTriangle3D(cornerTL, cornerTR, cornerBR, rgba(20, 24, 30, 200))
+		rl.DrawTriangle3D(cornerTL, cornerBR, cornerBL, rgba(20, 24, 30, 200))
+		rl.DrawTriangle3D(cornerTL, cornerTR, cornerBR, colBorderHi) // outline
+		rl.DrawTriangle3D(cornerTL, cornerBR, cornerBL, colBorderHi)
+
+		// Draw elements
+		for _, el := range b.Elements {
+			elX := b.Pos.X + right.X*el.X + up.X*el.Y
+			elY := b.Pos.Y + right.Y*el.X + up.Y*el.Y
+			elZ := b.Pos.Z + right.Z*el.X + up.Z*el.Y
+
+			if el.Kind == "button" {
+				// Draw button quad
+				ehw := el.W / 2
+				ehh := el.H / 2
+				btnTL := rlv(elX+right.X*(-ehw)+up.X*(-ehh), elY+right.Y*(-ehw)+up.Y*(-ehh), elZ+right.Z*(-ehw)+up.Z*(-ehh))
+				btnTR := rlv(elX+right.X*(ehw)+up.X*(-ehh), elY+right.Y*(ehw)+up.Y*(-ehh), elZ+right.Z*(ehw)+up.Z*(-ehh))
+				btnBR := rlv(elX+right.X*(ehw)+up.X*(ehh), elY+right.Y*(ehw)+up.Y*(ehh), elZ+right.Z*(ehw)+up.Z*(ehh))
+				btnBL := rlv(elX+right.X*(-ehw)+up.X*(ehh), elY+right.Y*(-ehw)+up.Y*(ehh), elZ+right.Z*(-ehw)+up.Z*(ehh))
+
+				btnCol := el.Color
+				if el.Hovered {
+					btnCol = withAlpha(el.Color, 200)
+				}
+				rl.DrawTriangle3D(btnTL, btnTR, btnBR, btnCol)
+				rl.DrawTriangle3D(btnTL, btnBR, btnBL, btnCol)
+				rl.DrawTriangle3D(btnTL, btnTR, btnBR, colBorderHi)
+				rl.DrawTriangle3D(btnTL, btnBR, btnBL, colBorderHi)
+
+				// Draw label text centered on button (screen-space for readability)
+				screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
+				if el.Label != "" {
+					tw := g.textWidth(el.Label, el.TextSize)
+					g.drawText(el.Label, screenPos.X-tw/2, screenPos.Y-el.TextSize/2, el.TextSize, el.TextColor)
+				}
+			} else if el.Kind == "text" {
+				screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
+				if el.Label != "" {
+					g.drawText(el.Label, screenPos.X-g.textWidth(el.Label, el.TextSize)/2, screenPos.Y-el.TextSize/2, el.TextSize, el.TextColor)
+				}
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Billboard hover detection (called from input update)
+// ---------------------------------------------------------------------------
+
+func (g *Game) updateBillboardHover(mouse rl.Vector2) {
+	if len(g.modBillboards) == 0 {
+		return
+	}
+	// We can't easily do 3D hover from 2D mouse, so we use the hand aim ray
+	// Instead, we check if the crosshair (center of screen) is over a billboard
+	camFwd := g.cameraForward()
+	camPos := g.camera.Position
+	_, elemID := g.raycastBillboard(camPos, camFwd, 10)
+
+	// Reset all hovered
+	for _, b := range g.modBillboards {
+		for _, el := range b.Elements {
+			el.Hovered = false
+		}
+	}
+
+	if elemID > 0 {
+		for _, b := range g.modBillboards {
+			for _, el := range b.Elements {
+				if el.ID == elemID {
+					el.Hovered = true
+				}
+			}
+		}
+	}
+}

@@ -227,6 +227,13 @@ type Game struct {
 	// Mod hooks that should run during the HUD phase.
 	modHUDHooks []string
 
+	// Mod billboard GUIs: 3D panels placed in world space that mods render
+	// beside entities. They render with depth testing so they don't show
+	// through walls, and the hand tool raycast can hit them instead of
+	// grabbing what's behind.
+	modBillboards    []*ModBillboard
+	modBillboardLast int32
+
 	// Frame counter and simulation time scale.
 	frame     int64
 	timeScale float64
@@ -367,6 +374,34 @@ type ModDebugCmd struct {
 	Color     rl.Color
 	Thickness float32
 	Segments  int32
+}
+
+// ModBillboard is a 3D panel placed in world space. Mods add buttons and
+// text to it; it renders with depth testing so it never shows through
+// walls, and the hand tool raycast can hit it instead of entities behind.
+type ModBillboard struct {
+	ID      int32
+	Owner   string
+	Pos     rl.Vector3   // world position (center of panel)
+	Face    rl.Vector3   // normal direction the panel faces
+	Right   rl.Vector3   // panel's right axis
+	Up      rl.Vector3   // panel's up axis
+	Width   float32      // panel width in meters
+	Height  float32      // panel height in meters
+	Elements []*ModBillboardElement
+}
+
+// ModBillboardElement is a clickable button or text on a billboard panel.
+type ModBillboardElement struct {
+	ID      int32
+	Kind    string // "button" or "text"
+	Label   string
+	X, Y    float32 // local panel coords (-width/2..width/2, -height/2..height/2)
+	W, H    float32
+	Color   rl.Color
+	TextColor rl.Color
+	TextSize float32
+	Hovered bool
 }
 
 // ModUIElement is an interactive UI element registered by a mod.
@@ -513,6 +548,7 @@ func (g *Game) Update(dt float64) {
 	g.updateToolAnimation(float32(dt))
 	g.fireInputEvents()
 	g.updateUIElements()
+	g.updateBillboardHover(g.uiMouse())
 	if g.state == stateMainMenu {
 		g.updateMainMenuInput()
 	}
