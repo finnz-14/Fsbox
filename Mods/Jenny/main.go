@@ -100,7 +100,7 @@ func init() {
 		}
 
 		// Toggle GUI with 'E'.
-		pressed, _ := fsbox.InputKeyPressed(69)
+		pressed, _ := fsbox.InputKeyPressed(fsbox.KeyE)
 		if pressed {
 			guiOpen = !guiOpen
 			if guiOpen {
