@@ -1021,15 +1021,56 @@ func rebuildSpawnCategories() {
 // Keep box3d import used.
 var _ = box3d.Vec3Zero
 
-func findMapFile() (string, bool) {
+// listMaps returns the names of available maps (from disk and embedded).
+func listMaps() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	// disk
+	if entries, err := os.ReadDir("Content/Maps"); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			if strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
+				add(strings.TrimSuffix(e.Name(), filepath.Ext(e.Name())))
+			}
+		}
+	}
+	// embedded
+	if entries, err := embeddedMaps.ReadDir("Content/Maps"); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			if strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
+				add(strings.TrimSuffix(e.Name(), filepath.Ext(e.Name())))
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func findMapFile(name string) (string, bool) {
+	if name == "" {
+		name = "default"
+	}
+	fname := name + ".json"
 	candidates := []string{
-		filepath.Join("Content", "Maps", "default.json"),
+		filepath.Join("Content", "Maps", fname),
 	}
 	if exe, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exe)
 		candidates = append(candidates,
-			filepath.Join(exeDir, "Content", "Maps", "default.json"),
-			filepath.Join(exeDir, "..", "Content", "Maps", "default.json"),
+			filepath.Join(exeDir, "Content", "Maps", fname),
+			filepath.Join(exeDir, "..", "Content", "Maps", fname),
 		)
 	}
 	for _, c := range candidates {
@@ -1040,8 +1081,8 @@ func findMapFile() (string, bool) {
 	return "", false
 }
 
-func (g *Game) loadMap(withStarter bool) {
-	path, ok := findMapFile()
+func (g *Game) loadMap(withStarter bool, mapName string) {
+	path, ok := findMapFile(mapName)
 	var data []byte
 	var err error
 	if ok {
@@ -1049,7 +1090,10 @@ func (g *Game) loadMap(withStarter bool) {
 	}
 	if err != nil || len(data) == 0 {
 		// embedded fallback
-		data, err = embeddedMaps.ReadFile("Content/Maps/default.json")
+		data, err = embeddedMaps.ReadFile("Content/Maps/" + mapName + ".json")
+		if err != nil {
+			data, err = embeddedMaps.ReadFile("Content/Maps/default.json")
+		}
 	}
 	if err != nil {
 		fmt.Printf("[map] failed to load map: %v\n", err)

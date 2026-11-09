@@ -99,8 +99,14 @@ func (g *Game) Draw() {
 
 	uiCam := rl.Camera2D{Zoom: g.uiScale()}
 	rl.BeginMode2D(uiCam)
-	g.drawHUD()
+	if g.state != stateMainMenu && g.state != stateMapMenu {
+		g.drawHUD()
+	}
 	switch g.state {
+	case stateMainMenu:
+		g.drawMainMenu()
+	case stateMapMenu:
+		g.drawMapMenu()
 	case stateHelp:
 		g.drawHelp()
 	case statePaused:

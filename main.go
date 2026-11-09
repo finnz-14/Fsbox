@@ -55,8 +55,13 @@ func run() int {
 	defer g.Close()
 	g.applyDisplayMode()
 
-	rl.DisableCursor()
-	g.cursorLocked = true
+	if g.state == statePlaying {
+		rl.DisableCursor()
+		g.cursorLocked = true
+	} else {
+		rl.EnableCursor()
+		g.cursorLocked = false
+	}
 	g.ignoreMouse = true
 
 	if *smoke {

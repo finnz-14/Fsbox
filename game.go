@@ -26,12 +26,14 @@ const (
 type UIState int
 
 const (
-	statePlaying UIState = iota
+	stateMainMenu UIState = iota
+	statePlaying
 	statePaused
 	stateHelp
 	stateSettings
 	stateSpawn
 	stateToolMenu
+	stateMapMenu
 )
 
 // toolKeys maps the 1-7 row to the tool gun modes.
@@ -147,6 +149,8 @@ type Game struct {
 
 	spawnTab      int
 	spawnCat      string
+
+	selectedMap string
 	spawnSearch   string
 	searchActive  bool
 	menuToolSel   ToolID
@@ -388,8 +392,9 @@ func NewGame() *Game {
 		byBody:          make(map[box3d.BodyID]*Entity),
 		byID:            make(map[int32]*Entity),
 		nextEntityID:    1,
-		state:           statePlaying,
+		state:           stateMainMenu,
 		selected:        0,
+		selectedMap:     "default",
 		tool:            toolPhysgun,
 		menuToolSel:     toolPhysgun,
 		toolMenuSel:     toolPhysgun,
@@ -504,6 +509,12 @@ func (g *Game) Update(dt float64) {
 	g.updateToolAnimation(float32(dt))
 	g.fireInputEvents()
 	g.updateUIElements()
+	if g.state == stateMainMenu {
+		g.updateMainMenuInput()
+	}
+	if g.state == stateMapMenu {
+		g.updateMapMenuInput()
+	}
 
 	if g.state == statePlaying {
 		g.updateLook()
@@ -526,9 +537,9 @@ func (g *Game) Update(dt float64) {
 	simDt = dt * g.timeScale
 
 	// The world keeps simulating in every state except the explicit pause
-	// menu, so props and effects keep moving while the spawn menu (or any
-	// other overlay) is open.
-	if g.state != statePaused {
+	// menu and the main/map menus, so props and effects keep moving while
+	// overlays are open.
+	if g.state != statePaused && g.state != stateMainMenu && g.state != stateMapMenu {
 		g.acc += simDt
 		steps := 0
 		for g.acc >= fixedStep && steps < maxSteps {

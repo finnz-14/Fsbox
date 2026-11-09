@@ -715,7 +715,7 @@ func (g *Game) resetWorld(withStarter bool, spawn box3d.Pos, yaw, pitch float32,
 	g.lastSpawn = nil
 	g.toolKick = 0
 	g.player = newPlayer(g.world, spawn, yaw, pitch, fly)
-	g.loadMap(withStarter)
+	g.loadMap(withStarter, g.selectedMap)
 	g.updateCamera()
 	if g.mods != nil {
 		g.mods.FireEvent("world.reset", map[string]any{"with_starter": withStarter})
