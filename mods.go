@@ -492,38 +492,6 @@ func collectModCandidates() []modCandidate {
 			out = append(out, modCandidate{dir: "Mods", manifest: manifest, hasManifest: hasManifest, runtime: "wasm", isGo: false, flatFile: path, isFlat: true})
 		}
 	}
-	if entries, _ := os.ReadDir("ModsGo"); entries != nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			modDir := filepath.Join("ModsGo", e.Name())
-			if _, err := os.Stat(filepath.Join(modDir, "go.mod")); err != nil {
-				continue
-			}
-			manifest := ModManifest{Runtime: "go", Entry: "main.go"}
-			hasManifest := false
-			manifestPath := filepath.Join(modDir, "mod.json")
-			if data, err := os.ReadFile(manifestPath); err == nil {
-				if err := json.Unmarshal(data, &manifest); err == nil {
-					hasManifest = true
-				}
-			}
-			if manifest.Runtime != "" && manifest.Runtime != "go" {
-				continue
-			}
-			if manifest.ID == "" {
-				manifest.ID = e.Name()
-			}
-			if manifest.Runtime == "" {
-				manifest.Runtime = "go"
-			}
-			if manifest.Entry == "" {
-				manifest.Entry = "main.go"
-			}
-			out = append(out, modCandidate{dir: modDir, manifest: manifest, hasManifest: hasManifest, runtime: "go", isGo: true})
-		}
-	}
 	return out
 }
 
