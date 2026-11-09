@@ -225,6 +225,60 @@ func SetCameraOffset(o Vec3) error {
 }
 
 // ---------------------------------------------------------------------------
+// Audio
+// ---------------------------------------------------------------------------
+
+func LoadSound(name, path string) error {
+	_, err := Call("audio.load_sound", map[string]any{"name": name, "path": path})
+	return err
+}
+
+func PlaySound(name string) error {
+	_, err := Call("audio.play_sound", map[string]any{"name": name})
+	return err
+}
+
+func PlaySound3D(name string, pos Vec3, volume float32, maxDistance float32) error {
+	_, err := Call("audio.play_sound_3d", map[string]any{"name": name, "position": pos, "volume": volume, "max_distance": maxDistance})
+	return err
+}
+
+func StopSound(name string) error {
+	_, err := Call("audio.stop_sound", map[string]any{"name": name})
+	return err
+}
+
+func LoadMusic(name, path string) error {
+	_, err := Call("audio.load_music", map[string]any{"name": name, "path": path})
+	return err
+}
+
+func PlayMusic(name string, volume float32) error {
+	_, err := Call("audio.play_music", map[string]any{"name": name, "volume": volume})
+	return err
+}
+
+func StopMusic(name string) error {
+	_, err := Call("audio.stop_music", map[string]any{"name": name})
+	return err
+}
+
+func SetMusicVolume(name string, volume float32) error {
+	_, err := Call("audio.set_music_volume", map[string]any{"name": name, "volume": volume})
+	return err
+}
+
+func AudioReady() (bool, error) {
+	raw, err := Call("audio.is_ready", nil)
+	if err != nil {
+		return false, err
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b, nil
+}
+
+// ---------------------------------------------------------------------------
 // Player model
 // ---------------------------------------------------------------------------
 

@@ -1590,6 +1590,48 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 			delete(g.modMusicVol, a.Name)
 		}
 		return true, nil
+	case "audio.play_sound_3d":
+		var a struct {
+			Name       string   `json:"name"`
+			Position   Vec3Info `json:"position"`
+			Volume     *float32 `json:"volume"`
+			Pitch      *float32 `json:"pitch"`
+			MaxDistance float32 `json:"max_distance"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		s, ok := g.modSounds[a.Name]
+		if !ok {
+			return false, fmt.Errorf("sound %q is not loaded", a.Name)
+		}
+		// Distance attenuation.
+		eye := g.eyePosition()
+		dx := a.Position.X - eye.X
+		dy := a.Position.Y - eye.Y
+		dz := a.Position.Z - eye.Z
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy + dz*dz)))
+		maxD := a.MaxDistance
+		if maxD <= 0 {
+			maxD = 30
+		}
+		vol := float32(1)
+		if a.Volume != nil {
+			vol = *a.Volume
+		}
+		if dist > maxD {
+			return false, nil
+		}
+		att := 1 - dist/maxD
+		if att < 0 {
+			att = 0
+		}
+		rl.SetSoundVolume(s, vol*att)
+		if a.Pitch != nil {
+			rl.SetSoundPitch(s, *a.Pitch)
+		}
+		rl.PlaySound(s)
+		return true, nil
 
 	// ----- weapon ---------------------------------------------------------
 	case "weapon.register":
