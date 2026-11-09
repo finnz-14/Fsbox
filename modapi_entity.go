@@ -63,6 +63,10 @@ func (g *Game) apiSpawnEntity(owner string, cmd string, args json.RawMessage) (a
 				break
 			}
 		}
+		fmt.Printf("[anim] preset lookup '%s' -> index %d (total presets: %d)\n", a.PresetName, presetIndex, len(presets))
+		for i := range presets {
+			fmt.Printf("[anim]   preset[%d] = %s (%d animations)\n", i, presets[i].Name, len(presets[i].Animations))
+		}
 	} else if a.Preset >= 0 && int(a.Preset) < len(presets) {
 		presetIndex = int(a.Preset)
 	}
@@ -70,6 +74,7 @@ func (g *Game) apiSpawnEntity(owner string, cmd string, args json.RawMessage) (a
 	var e *Entity
 	if presetIndex >= 0 {
 		e = g.spawnPreset(presets[presetIndex], pos.pos(), rot, color)
+		fmt.Printf("[anim] spawned %s with %d animations\n", e.Name, len(e.Animations))
 	} else {
 		kind := PropBox
 		if k, ok := propKindFromString(a.Kind); ok {

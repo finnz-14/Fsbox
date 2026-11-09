@@ -267,6 +267,30 @@ func InputWheel() (float32, error) {
 }
 
 // ---------------------------------------------------------------------------
+// Player info (for mods to detect proximity themselves)
+// ---------------------------------------------------------------------------
+
+type PlayerInfo struct {
+	Position Vec3
+	Forward  Vec3
+}
+
+func GetPlayerInfo() (PlayerInfo, error) {
+	raw, err := Call("player.get", nil)
+	if err != nil {
+		return PlayerInfo{}, err
+	}
+	var pi struct {
+		Position Vec3   `json:"position"`
+		Forward  Vec3   `json:"forward"`
+	}
+	if err := json.Unmarshal(raw, &pi); err != nil {
+		return PlayerInfo{}, err
+	}
+	return PlayerInfo{Position: pi.Position, Forward: pi.Forward}, nil
+}
+
+// ---------------------------------------------------------------------------
 // Audio
 // ---------------------------------------------------------------------------
 
@@ -341,7 +365,9 @@ func GetAnimations(id int32) ([]AnimationInfo, error) {
 		return nil, err
 	}
 	var out []AnimationInfo
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 

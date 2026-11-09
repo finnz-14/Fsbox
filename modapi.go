@@ -2031,7 +2031,12 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if e == nil || len(e.Animations) == 0 {
+		if e == nil {
+			fmt.Printf("[anim] get_animations: entity not found\n")
+			return []any{}, nil
+		}
+		fmt.Printf("[anim] get_animations: entity %d (%s) has %d animations\n", e.ID, e.Name, len(e.Animations))
+		if len(e.Animations) == 0 {
 			return []any{}, nil
 		}
 		out := make([]any, 0, len(e.Animations))
