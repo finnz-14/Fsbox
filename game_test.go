@@ -24,8 +24,7 @@ func newHeadlessGame(t *testing.T) *Game {
 	}
 	loadContentSpawnables()
 	g.player = newPlayer(g.world, defaultSpawn, 0, -0.12, false)
-	g.buildArena()
-	g.buildStarterProps()
+	g.loadMap(true)
 	t.Cleanup(g.Close)
 	return g
 }
