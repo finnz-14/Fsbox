@@ -1,0 +1,11 @@
+{
+  "id": "jenny.mod",
+  "name": "Jenny",
+  "version": "1.0.0",
+  "author": "Developer",
+  "description": "Spawns the Jenny model and provides animation controls",
+  "runtime": "wasm",
+  "entry": "main.wasm",
+  "game_version": ">=1.0.0",
+  "dependencies": []
+}
