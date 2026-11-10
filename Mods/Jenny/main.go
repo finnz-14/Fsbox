@@ -270,7 +270,7 @@ func buildPanel() {
 	_, _ = fsbox.AddBillboardText(panelID, 0, 1.30, "JENNY", 30, colAccent)
 	_, _ = fsbox.AddBillboardText(panelID, 0, 1.10, "ANIMATION BROWSER", 14, colMuted)
 
-	statusID, _ = fsbox.AddBillboardText(panelID, 0, -0.96, "WHEEL TO SCROLL  |  SELECT A CLIP  |  PLAY", 14, colMuted)
+	statusID, _ = fsbox.AddBillboardText(panelID, 0, -0.96, "AIM AT LIST + WHEEL TO SCROLL  |  SELECT THEN PLAY", 14, colMuted)
 
 	for i := 0; i < rowCount; i++ {
 		y := firstRowY - float32(i)*rowSpacing
@@ -367,6 +367,12 @@ func setStatus(text string, c fsbox.Color) {
 // ---------------------------------------------------------------------------
 
 func handleScroll() {
+	// Only scroll while the crosshair is actually on the panel. Otherwise the
+	// wheel belongs to whatever the player is looking at (or another menu).
+	hover, err := fsbox.GetBillboardHover()
+	if err != nil || hover.Panel != panelID {
+		return
+	}
 	w, err := fsbox.InputWheel()
 	if err != nil || w == 0 {
 		return

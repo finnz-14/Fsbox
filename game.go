@@ -72,21 +72,21 @@ type Shockwave struct {
 // effects. The simulation runs at a fixed 60 Hz while rendering follows the
 // monitor's frame rate.
 type Game struct {
-	world       box3d.WorldID
-	player      *Player
-	entities    []*Entity
-	props       []*Entity
-	byBody      map[box3d.BodyID]*Entity
-	byID        map[int32]*Entity
+	world        box3d.WorldID
+	player       *Player
+	entities     []*Entity
+	props        []*Entity
+	byBody       map[box3d.BodyID]*Entity
+	byID         map[int32]*Entity
 	nextEntityID int32
 
 	held       *Entity
 	holdDist   float32
 	holdOffset box3d.Vec3
-	spawnDist float32
-	aim       *Entity
-	aimPoint  rl.Vector3
-	aimNormal rl.Vector3
+	spawnDist  float32
+	aim        *Entity
+	aimPoint   rl.Vector3
+	aimNormal  rl.Vector3
 
 	ghostPos    rl.Vector3
 	ghostNormal rl.Vector3
@@ -121,7 +121,7 @@ type Game struct {
 	// modelPreview is the offscreen target used by the spawn menu to draw a 3D
 	// content model inside the inspection well.
 	modelPreview rl.RenderTexture2D
-	mods        *ModManager
+	mods         *ModManager
 
 	cube rl.Model
 	font rl.Font
@@ -147,10 +147,10 @@ type Game struct {
 	spawnAnchor         rl.Vector3
 	spawnAnchorOK       bool
 
-	spawnTab      int
-	spawnCat      string
+	spawnTab int
+	spawnCat string
 
-	selectedMap string
+	selectedMap   string
 	spawnSearch   string
 	searchActive  bool
 	menuToolSel   ToolID
@@ -167,26 +167,26 @@ type Game struct {
 
 	// Weapon registry: mods register custom weapons; index into this slice is
 	// the weapon ID used by host API calls.
-	modWeapons       []*ModWeapon
-	modWeaponLast    int32
-	activeModWeapon  int32
+	modWeapons      []*ModWeapon
+	modWeaponLast   int32
+	activeModWeapon int32
 
 	// Custom tool registrations from mods.
-	modTools        []*ModTool
-	modToolLast     int32
-	activeModTool   int32
-	menuModToolSel  int32
-	toolModColor    rl.Color
+	modTools       []*ModTool
+	modToolLast    int32
+	activeModTool  int32
+	menuModToolSel int32
+	toolModColor   rl.Color
 
 	// ------------------------------------------------------------------
 	// Extended modding runtime state
 	// ------------------------------------------------------------------
-	modModels       map[int32]rl.Model
-	modModelLast    int32
-	modModelAnims   map[int32][]rl.ModelAnimation
-	modShaders      map[int32]rl.Shader
-	modShaderLast   int32
-	modUIElements   []ModUIElement
+	modModels        map[int32]rl.Model
+	modModelLast     int32
+	modModelAnims    map[int32][]rl.ModelAnimation
+	modShaders       map[int32]rl.Shader
+	modShaderLast    int32
+	modUIElements    []ModUIElement
 	modUIElementLast int32
 
 	// Camera/player model control.
@@ -205,8 +205,8 @@ type Game struct {
 	modMouseHooks map[int32][]string
 
 	// Mod-owned particles (simple point particles rendered by the engine).
-	modParticles     []*ModParticle
-	modParticleLast  int32
+	modParticles    []*ModParticle
+	modParticleLast int32
 
 	// Mod projectiles (real dynamic bodies tracked for collision/damage).
 	modProjectiles []*ModProjectile
@@ -219,9 +219,9 @@ type Game struct {
 	modDrawActive bool
 
 	// Audio resources owned by mods. Lazily initialised on first use.
-	modSounds    map[string]rl.Sound
-	modMusic     map[string]rl.Music
-	modMusicVol  map[string]float32
+	modSounds     map[string]rl.Sound
+	modMusic      map[string]rl.Music
+	modMusicVol   map[string]float32
 	modAudioReady bool
 
 	// Mod hooks that should run during the HUD phase.
@@ -233,6 +233,10 @@ type Game struct {
 	// grabbing what's behind.
 	modBillboards    []*ModBillboard
 	modBillboardLast int32
+
+	// Billboard under the crosshair, refreshed every frame for ui.billboard_hover.
+	modBillboardHoverPanel int32
+	modBillboardHoverElem  int32
 
 	// Frame counter and simulation time scale.
 	frame     int64
@@ -380,42 +384,42 @@ type ModDebugCmd struct {
 // text to it; it renders with depth testing so it never shows through
 // walls, and the hand tool raycast can hit it instead of entities behind.
 type ModBillboard struct {
-	ID      int32
-	Owner   string
-	Pos     rl.Vector3   // world position (center of panel)
-	Face    rl.Vector3   // normal direction the panel faces
-	Right   rl.Vector3   // panel's right axis
-	Up      rl.Vector3   // panel's up axis
-	Width   float32      // panel width in meters
-	Height  float32      // panel height in meters
+	ID       int32
+	Owner    string
+	Pos      rl.Vector3 // world position (center of panel)
+	Face     rl.Vector3 // normal direction the panel faces
+	Right    rl.Vector3 // panel's right axis
+	Up       rl.Vector3 // panel's up axis
+	Width    float32    // panel width in meters
+	Height   float32    // panel height in meters
 	Elements []*ModBillboardElement
 }
 
 // ModBillboardElement is a clickable button or text on a billboard panel.
 type ModBillboardElement struct {
-	ID      int32
-	Kind    string // "button" or "text"
-	Label   string
-	X, Y    float32 // local panel coords (-width/2..width/2, -height/2..height/2)
-	W, H    float32
-	Color   rl.Color
+	ID        int32
+	Kind      string // "button" or "text"
+	Label     string
+	X, Y      float32 // local panel coords (-width/2..width/2, -height/2..height/2)
+	W, H      float32
+	Color     rl.Color
 	TextColor rl.Color
-	TextSize float32
-	Hovered bool
+	TextSize  float32
+	Hovered   bool
 }
 
 // ModUIElement is an interactive UI element registered by a mod.
 type ModUIElement struct {
-	ID     int32
-	Kind   string // button, panel, slider, text_input
-	X, Y   float32
-	W, H   float32
-	Label  string
-	Color  rl.Color
-	Value  float32
-	Min    float32
-	Max    float32
-	Owner  string
+	ID    int32
+	Kind  string // button, panel, slider, text_input
+	X, Y  float32
+	W, H  float32
+	Label string
+	Color rl.Color
+	Value float32
+	Min   float32
+	Max   float32
+	Owner string
 }
 
 // ------------------------------------------------------------------

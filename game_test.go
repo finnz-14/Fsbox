@@ -506,3 +506,33 @@ func TestBillboardClearIsOwnerScoped(t *testing.T) {
 		t.Fatal("owner could not remove its own panel")
 	}
 }
+
+func TestBillboardBasisUsesCameraAxes(t *testing.T) {
+	g := &Game{}
+	g.camera.Position = rlv(0, 0, 5)
+	g.camera.Target = rlv(0, 0, 0)
+	g.camera.Up = rlv(0, 1, 0)
+
+	right, up := g.billboardBasis()
+	if absf(right.X-1) > 0.001 || absf(right.Y) > 0.001 || absf(right.Z) > 0.001 {
+		t.Fatalf("right = %+v, want +X", right)
+	}
+	if absf(up.Y-1) > 0.001 || absf(up.X) > 0.001 || absf(up.Z) > 0.001 {
+		t.Fatalf("up = %+v, want +Y", up)
+	}
+}
+
+func TestBillboardHoverCommandReportsStoredHit(t *testing.T) {
+	g := &Game{modBillboardHoverPanel: 4, modBillboardHoverElem: 12}
+	raw, err := g.ModCall("mod.a", "ui.billboard_hover", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hit, ok := raw.(map[string]int32)
+	if !ok {
+		t.Fatalf("hover returned %T", raw)
+	}
+	if hit["panel"] != 4 || hit["element"] != 12 {
+		t.Fatalf("hover = %+v, want panel 4 element 12", hit)
+	}
+}

@@ -467,6 +467,27 @@ func UpdateBillboardElement(elementID int32, u BillboardElementUpdate) error {
 	return err
 }
 
+// BillboardHover describes which billboard the crosshair is currently over.
+// Panel is 0 when no billboard is under the crosshair.
+type BillboardHover struct {
+	Panel   int32 `json:"panel"`
+	Element int32 `json:"element"`
+}
+
+// GetBillboardHover returns the billboard panel and button under the crosshair.
+// Mods use it to decide whether wheel/key input should affect their panel.
+func GetBillboardHover() (BillboardHover, error) {
+	raw, err := Call("ui.billboard_hover", nil)
+	if err != nil {
+		return BillboardHover{}, err
+	}
+	var h BillboardHover
+	if err := json.Unmarshal(raw, &h); err != nil {
+		return BillboardHover{}, err
+	}
+	return h, nil
+}
+
 // ---------------------------------------------------------------------------
 // Audio
 // ---------------------------------------------------------------------------

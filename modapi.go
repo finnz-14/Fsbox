@@ -1354,6 +1354,11 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		return g.apiBillboardMove(owner, args)
 	case "ui.billboard_update":
 		return g.apiBillboardUpdate(owner, args)
+	case "ui.billboard_hover":
+		return map[string]int32{
+			"panel":   g.modBillboardHoverPanel,
+			"element": g.modBillboardHoverElem,
+		}, nil
 	case "ui.billboard_remove":
 		return g.apiBillboardRemove(owner, args)
 	case "ui.billboard_clear":

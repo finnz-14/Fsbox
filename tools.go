@@ -260,7 +260,7 @@ func (g *Game) handRaycastBillboard() bool {
 		return false
 	}
 	camPos := g.camera.Position
-	camFwd := g.cameraForward()
+	camFwd := g.cameraViewForward()
 	panelID, elemID := g.raycastBillboard(camPos, camFwd, 64)
 	if panelID == 0 {
 		return false

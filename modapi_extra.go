@@ -413,6 +413,49 @@ func (g *Game) drawUIElements() {
 // Text renders at screen-space size so it's always readable regardless of distance
 // ---------------------------------------------------------------------------
 
+// cameraViewForward is the direction the actual render camera looks. It is
+// derived from the camera transform rather than the player yaw so billboards
+// stay screen-aligned in third person too. Falls back to the player look
+// direction when the camera target is not set.
+func (g *Game) cameraViewForward() rl.Vector3 {
+	fwd := rlv(
+		g.camera.Target.X-g.camera.Position.X,
+		g.camera.Target.Y-g.camera.Position.Y,
+		g.camera.Target.Z-g.camera.Position.Z,
+	)
+	if lenRl(fwd) < 1e-6 {
+		return g.cameraForward()
+	}
+	return normRl(fwd)
+}
+
+// billboardBasis returns the camera's screen-aligned right/up axes. Using the
+// camera axes (instead of the panel-to-camera vector) keeps every panel
+// parallel to the near plane, so its projection is a plain axis-aligned
+// rectangle. That makes the 3D buttons line up exactly with the 2D text drawn
+// over them at any camera angle.
+func (g *Game) billboardBasis() (rl.Vector3, rl.Vector3) {
+	fwd := g.cameraViewForward()
+	upHint := g.camera.Up
+	if lenRl(upHint) < 1e-6 {
+		upHint = rlv(0, 1, 0)
+	}
+	right := normRl(rlv(
+		fwd.Y*upHint.Z-fwd.Z*upHint.Y,
+		fwd.Z*upHint.X-fwd.X*upHint.Z,
+		fwd.X*upHint.Y-fwd.Y*upHint.X,
+	))
+	if lenRl(right) < 1e-6 {
+		right = rlv(1, 0, 0)
+	}
+	up := normRl(rlv(
+		right.Y*fwd.Z-right.Z*fwd.Y,
+		right.Z*fwd.X-right.X*fwd.Z,
+		right.X*fwd.Y-right.Y*fwd.X,
+	))
+	return right, up
+}
+
 func (g *Game) drawBillboards() {
 	if len(g.modBillboards) == 0 {
 		return
@@ -421,31 +464,16 @@ func (g *Game) drawBillboards() {
 		return
 	}
 	camPos := g.camera.Position
+	right, up := g.billboardBasis()
 
 	for _, b := range g.modBillboards {
-		// Billboards always face camera
+		// Only the face offset needs the direction to the camera; the panel
+		// itself is aligned with the screen.
 		toCam := rlv(camPos.X-b.Pos.X, camPos.Y-b.Pos.Y, camPos.Z-b.Pos.Z)
-		dist := lenRl(toCam)
-		if dist < 0.01 {
+		if lenRl(toCam) < 0.01 {
 			continue
 		}
 		toCam = normRl(toCam)
-
-		// Compute right/up axes so panel faces camera
-		worldUp := rlv(0, 1, 0)
-		right := normRl(rlv(
-			worldUp.Y*toCam.Z-worldUp.Z*toCam.Y,
-			worldUp.Z*toCam.X-worldUp.X*toCam.Z,
-			worldUp.X*toCam.Y-worldUp.Y*toCam.X,
-		))
-		if lenRl(right) < 1e-6 {
-			right = rlv(1, 0, 0)
-		}
-		up := normRl(rlv(
-			toCam.Y*right.Z-toCam.Z*right.Y,
-			toCam.Z*right.X-toCam.X*right.Z,
-			toCam.X*right.Y-toCam.Y*right.X,
-		))
 
 		hw := b.Width / 2
 		hh := b.Height / 2
@@ -526,11 +554,12 @@ func (g *Game) drawBillboardLabels() {
 		return
 	}
 	camPos := g.camera.Position
-	camFwd := g.cameraForward()
+	camFwd := g.cameraViewForward()
 	s := g.uiScale()
 	if s <= 0 {
 		s = 1
 	}
+	right, up := g.billboardBasis()
 
 	for _, b := range g.modBillboards {
 		toCam := rlv(camPos.X-b.Pos.X, camPos.Y-b.Pos.Y, camPos.Z-b.Pos.Z)
@@ -544,21 +573,6 @@ func (g *Game) drawBillboardLabels() {
 		if -toCam.X*camFwd.X-toCam.Y*camFwd.Y-toCam.Z*camFwd.Z <= 0.05 {
 			continue
 		}
-
-		worldUp := rlv(0, 1, 0)
-		right := normRl(rlv(
-			worldUp.Y*toCam.Z-worldUp.Z*toCam.Y,
-			worldUp.Z*toCam.X-worldUp.X*toCam.Z,
-			worldUp.X*toCam.Y-worldUp.Y*toCam.X,
-		))
-		if lenRl(right) < 1e-6 {
-			right = rlv(1, 0, 0)
-		}
-		up := normRl(rlv(
-			toCam.Y*right.Z-toCam.Z*right.Y,
-			toCam.Z*right.X-toCam.X*right.Z,
-			toCam.X*right.Y-toCam.Y*right.X,
-		))
 
 		for _, el := range b.Elements {
 			if el.Label == "" {
@@ -623,36 +637,17 @@ func (g *Game) raycastBillboard(origin, dir rl.Vector3, maxDist float32) (int32,
 	bestElem := int32(0)
 	bestDist := maxDist
 
+	// Panels are screen-aligned, so their plane normal is the camera view
+	// axis and the local axes are the camera's right/up vectors.
+	normal := g.cameraViewForward()
+	right, up := g.billboardBasis()
+
 	for _, b := range g.modBillboards {
-		// Compute panel frame based on camera position (billboard faces camera)
-		camPos := g.camera.Position
-		toCam := rlv(camPos.X-b.Pos.X, camPos.Y-b.Pos.Y, camPos.Z-b.Pos.Z)
-		dist := lenRl(toCam)
-		if dist < 0.01 {
-			continue
-		}
-		toCam = normRl(toCam)
-
-		worldUp := rlv(0, 1, 0)
-		right := normRl(rlv(
-			worldUp.Y*toCam.Z-worldUp.Z*toCam.Y,
-			worldUp.Z*toCam.X-worldUp.X*toCam.Z,
-			worldUp.X*toCam.Y-worldUp.Y*toCam.X,
-		))
-		if lenRl(right) < 1e-6 {
-			right = rlv(1, 0, 0)
-		}
-		up := normRl(rlv(
-			toCam.Y*right.Z-toCam.Z*right.Y,
-			toCam.Z*right.X-toCam.X*right.Z,
-			toCam.X*right.Y-toCam.Y*right.X,
-		))
-
-		denom := toCam.X*dir.X + toCam.Y*dir.Y + toCam.Z*dir.Z
+		denom := normal.X*dir.X + normal.Y*dir.Y + normal.Z*dir.Z
 		if float32(math.Abs(float64(denom))) < 1e-6 {
 			continue
 		}
-		t := ((b.Pos.X-origin.X)*toCam.X + (b.Pos.Y-origin.Y)*toCam.Y + (b.Pos.Z-origin.Z)*toCam.Z) / denom
+		t := ((b.Pos.X-origin.X)*normal.X + (b.Pos.Y-origin.Y)*normal.Y + (b.Pos.Z-origin.Z)*normal.Z) / denom
 		if t < 0.01 || t > bestDist {
 			continue
 		}
@@ -952,12 +947,16 @@ func (g *Game) findBillboard(id int32, owner string) *ModBillboard {
 }
 
 func (g *Game) updateBillboardHover() {
+	g.modBillboardHoverPanel = 0
+	g.modBillboardHoverElem = 0
 	if len(g.modBillboards) == 0 {
 		return
 	}
-	camFwd := g.cameraForward()
+	camFwd := g.cameraViewForward()
 	camPos := g.camera.Position
-	_, elemID := g.raycastBillboard(camPos, camFwd, 64)
+	panelID, elemID := g.raycastBillboard(camPos, camFwd, 64)
+	g.modBillboardHoverPanel = panelID
+	g.modBillboardHoverElem = elemID
 
 	for _, b := range g.modBillboards {
 		for _, el := range b.Elements {
