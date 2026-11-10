@@ -74,7 +74,13 @@ func (g *Game) Draw() {
 			rl.SetShaderValue(g.mainShader, locShadowEnabled, int32Slice(se), rl.ShaderUniformInt)
 		}
 	}
+	// Build the animated-model depth buffer for this frame before drawing the
+	// entities. Billboard text is projected with g.camera, so the buffer must
+	// use the same camera rather than the shaken render camera.
+	g.visualDepth.reset(g.camera, int(rl.GetScreenWidth()), int(rl.GetScreenHeight()))
+	g.collectVisualDepth = true
 	g.drawEntities()
+	g.collectVisualDepth = false
 	if g.hasShadow {
 		rl.EndShaderMode()
 	}
@@ -221,6 +227,9 @@ func (g *Game) drawEntityShape(e *Entity, p rl.Vector3, q box3d.Quat, c, edge rl
 		// mesh vertex buffers, so doing this earlier would let the last entity
 		// overwrite every other instance of the same model.
 		applyEntityPose(e)
+		if g.collectVisualDepth && e.AnimActive {
+			g.visualDepth.rasterizeEntity(e, p, q)
+		}
 		// Content models are authored double-sided (glTF doubleSided=true), so
 		// keep both faces visible instead of letting the default culling carve
 		// holes out of the mesh.

@@ -706,9 +706,15 @@ func (g *Game) drawBillboardLabel(label string, world rl.Vector3, sp rl.Vector2,
 	}
 }
 
-// billboardPointVisible is a single physics ray from the camera to a world
-// point, used to keep billboard labels from showing through solid geometry.
+// billboardPointVisible keeps billboard labels from showing through solid
+// geometry. Animated models are tested against the software visual depth
+// buffer because their physics hulls stay at the bind pose; the physics ray is
+// still used for static geometry and unposed props, and it skips bodies that
+// belong to animated entities.
 func (g *Game) billboardPointVisible(p rl.Vector3) bool {
+	if g.visualDepth.occludes(p) {
+		return false
+	}
 	if g.world.IsNull() {
 		return true
 	}
@@ -723,11 +729,38 @@ func (g *Game) billboardPointVisible(p rl.Vector3) bool {
 	dx /= l
 	dy /= l
 	dz /= l
-	res := g.world.CastRayClosest(toBp(origin), bv(dx*l, dy*l, dz*l), queryFilter(catStatic|catProp))
-	if !res.Hit {
-		return true
+
+	// Step past animated bodies instead of treating their bind-pose hull as an
+	// occluder. Without this, a raised arm would hide text while the physics
+	// hull for that arm is still down at the model's side.
+	from := origin
+	remaining := l
+	for iter := 0; iter < 16 && remaining > 0.01; iter++ {
+		res := g.world.CastRayClosest(toBp(from), bv(dx*remaining, dy*remaining, dz*remaining), queryFilter(catStatic|catProp))
+		if !res.Hit {
+			return true
+		}
+		hitDist := float32(res.Fraction) * remaining
+		if remaining-hitDist < 0.2 {
+			return true
+		}
+		body := res.ShapeId.GetBody()
+		e := g.byBody[body]
+		if e == nil || !e.HasModel || !e.AnimActive {
+			return false
+		}
+		step := hitDist + 0.02
+		if step >= remaining {
+			return true
+		}
+		from = rlv(
+			from.X+dx*step,
+			from.Y+dy*step,
+			from.Z+dz*step,
+		)
+		remaining -= step
 	}
-	return float32(res.Fraction)*l >= l-0.2
+	return true
 }
 
 // ---------------------------------------------------------------------------

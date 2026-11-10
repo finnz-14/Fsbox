@@ -81,6 +81,13 @@ type Game struct {
 	byID         map[int32]*Entity
 	nextEntityID int32
 
+	// visualDepth holds the posed triangle depth of animated models for the
+	// current frame. Billboard text uses it because physics hulls stay at the
+	// bind pose while the rendered mesh deforms. collectVisualDepth is only set
+	// during the main entity pass so the shadow pass does not pay for it.
+	visualDepth        visualDepthBuffer
+	collectVisualDepth bool
+
 	held       *Entity
 	holdDist   float32
 	holdOffset box3d.Vec3
