@@ -227,7 +227,10 @@ func (g *Game) drawEntityShape(e *Entity, p rl.Vector3, q box3d.Quat, c, edge rl
 		// mesh vertex buffers, so doing this earlier would let the last entity
 		// overwrite every other instance of the same model.
 		applyEntityPose(e)
-		if g.collectVisualDepth && e.AnimActive {
+		// Rasterise every model, not only animated ones. Bind-pose models still
+		// need to occlude billboard text, and their physics hulls may not match
+		// the rendered mesh closely enough for a ray test.
+		if g.collectVisualDepth {
 			g.visualDepth.rasterizeEntity(e, p, q)
 		}
 		// Content models are authored double-sided (glTF doubleSided=true), so

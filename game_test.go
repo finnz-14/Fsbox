@@ -548,6 +548,31 @@ func TestBillboardTextWorldFlag(t *testing.T) {
 	}
 }
 
+func TestBillboardOcclusionSkipsModelBodies(t *testing.T) {
+	g := newHeadlessGame(t)
+	g.camera.Position = rlv(100, 100, 100)
+	g.camera.Target = rlv(100, 100, 90)
+
+	e := g.addBoxEntity(true, toBp(rlv(100, 100, 95)), box3d.QuatIdentity,
+		box3d.Vec3{X: 1, Y: 1, Z: 1}, colCrate, "occluder", 1, 0.6, 0)
+	if e == nil {
+		t.Fatal("failed to create occluder")
+	}
+	target := rlv(100, 100, 90)
+
+	// A plain prop must still occlude through the physics ray.
+	if g.billboardPointVisible(target) {
+		t.Fatal("solid prop did not occlude billboard text")
+	}
+
+	// Model bodies are handled by the visual depth buffer, so the physics ray
+	// must skip them even when the entity is not animating.
+	e.HasModel = true
+	if !g.billboardPointVisible(target) {
+		t.Fatal("model body was not skipped by the physics occlusion ray")
+	}
+}
+
 func TestBillboardsRenderOnlyWhilePlaying(t *testing.T) {
 	g := &Game{}
 	g.state = statePlaying

@@ -707,10 +707,10 @@ func (g *Game) drawBillboardLabel(label string, world rl.Vector3, sp rl.Vector2,
 }
 
 // billboardPointVisible keeps billboard labels from showing through solid
-// geometry. Animated models are tested against the software visual depth
-// buffer because their physics hulls stay at the bind pose; the physics ray is
-// still used for static geometry and unposed props, and it skips bodies that
-// belong to animated entities.
+// geometry. Every model is tested against the software visual depth buffer
+// because its physics hulls are a coarse bind-pose approximation of the drawn
+// mesh. The physics ray is still used for static geometry and non-model props,
+// and it skips bodies that belong to model entities.
 func (g *Game) billboardPointVisible(p rl.Vector3) bool {
 	if g.visualDepth.occludes(p) {
 		return false
@@ -730,9 +730,9 @@ func (g *Game) billboardPointVisible(p rl.Vector3) bool {
 	dy /= l
 	dz /= l
 
-	// Step past animated bodies instead of treating their bind-pose hull as an
-	// occluder. Without this, a raised arm would hide text while the physics
-	// hull for that arm is still down at the model's side.
+	// Step past model bodies instead of treating their bind-pose hulls as
+	// occluders. The visual depth buffer already covers the rendered mesh, so
+	// the physics hull must not double-count (or contradict) it.
 	from := origin
 	remaining := l
 	for iter := 0; iter < 16 && remaining > 0.01; iter++ {
@@ -746,7 +746,7 @@ func (g *Game) billboardPointVisible(p rl.Vector3) bool {
 		}
 		body := res.ShapeId.GetBody()
 		e := g.byBody[body]
-		if e == nil || !e.HasModel || !e.AnimActive {
+		if e == nil || !e.HasModel {
 			return false
 		}
 		step := hitDist + 0.02

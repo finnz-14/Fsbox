@@ -59,16 +59,16 @@ type mapVec struct {
 }
 
 type mapStatic struct {
-	Kind    string  `json:"kind"`
-	Name    string  `json:"name"`
-	Pos     mapVec  `json:"pos"`
-	Half    mapVec  `json:"half"`
-	Radius  float32 `json:"radius"`
-	Height  float32 `json:"height"`
-	Color   []int   `json:"color"`
-	Yaw     float32 `json:"yaw"`
-	Pitch   float32 `json:"pitch"`
-	Roll    float32 `json:"roll"`
+	Kind   string  `json:"kind"`
+	Name   string  `json:"name"`
+	Pos    mapVec  `json:"pos"`
+	Half   mapVec  `json:"half"`
+	Radius float32 `json:"radius"`
+	Height float32 `json:"height"`
+	Color  []int   `json:"color"`
+	Yaw    float32 `json:"yaw"`
+	Pitch  float32 `json:"pitch"`
+	Roll   float32 `json:"roll"`
 }
 
 type mapProp struct {
@@ -81,7 +81,7 @@ type mapProp struct {
 }
 
 type mapFile struct {
-	Name   string     `json:"name"`
+	Name   string      `json:"name"`
 	Static []mapStatic `json:"static"`
 	Props  []mapProp   `json:"props"`
 }
@@ -106,8 +106,10 @@ func initMissingTexture() {
 // game folder.
 //
 // Example:
-//   Mods/jenny.mod/Content/Spawnables/Jenny/Jenny/jennynude.glb
-//   Mods/other.mod/Content/Spawnables/jenny/jenny/model.glb
+//
+//	Mods/jenny.mod/Content/Spawnables/Jenny/Jenny/jennynude.glb
+//	Mods/other.mod/Content/Spawnables/jenny/jenny/model.glb
+//
 // produces two categories: "Jenny" and "jenny".
 func mergeModContent() {
 	root := ".merged_content"
@@ -379,55 +381,55 @@ func loadEmbeddedSpawnables() {
 			if cs.Name == "" {
 				cs.Name = strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
 			}
-		p := ShapePreset{Name: cs.Name, Density: cs.Density, Friction: cs.Friction, Restitution: cs.Restitution}
-		switch strings.ToLower(cs.Kind) {
-		case "sphere", "ball":
-			p.Kind = PropSphere
-			if cs.Radius <= 0 {
-				cs.Radius = 0.5
+			p := ShapePreset{Name: cs.Name, Density: cs.Density, Friction: cs.Friction, Restitution: cs.Restitution}
+			switch strings.ToLower(cs.Kind) {
+			case "sphere", "ball":
+				p.Kind = PropSphere
+				if cs.Radius <= 0 {
+					cs.Radius = 0.5
+				}
+				p.Radius = cs.Radius
+			case "cylinder", "barrel":
+				p.Kind = PropCylinder
+				if cs.Radius <= 0 {
+					cs.Radius = 0.4
+				}
+				if cs.Height <= 0 {
+					cs.Height = 1.0
+				}
+				p.Radius = cs.Radius
+				p.Height = cs.Height
+			default:
+				p.Kind = PropBox
+				hx, hy, hz := float32(0.5), float32(0.5), float32(0.5)
+				if len(cs.Half) >= 1 {
+					hx = cs.Half[0]
+				}
+				if len(cs.Half) >= 2 {
+					hy = cs.Half[1]
+				}
+				if len(cs.Half) >= 3 {
+					hz = cs.Half[2]
+				}
+				p.Half = bv(hx, hy, hz)
 			}
-			p.Radius = cs.Radius
-		case "cylinder", "barrel":
-			p.Kind = PropCylinder
-			if cs.Radius <= 0 {
-				cs.Radius = 0.4
+			if len(cs.Color) >= 3 {
+				p.Color = rl.NewColor(uint8(cs.Color[0]), uint8(cs.Color[1]), uint8(cs.Color[2]), 255)
+			} else {
+				p.Color = rl.Gray
 			}
-			if cs.Height <= 0 {
-				cs.Height = 1.0
+			if p.Density <= 0 {
+				p.Density = 150
 			}
-			p.Radius = cs.Radius
-			p.Height = cs.Height
-		default:
-			p.Kind = PropBox
-			hx, hy, hz := float32(0.5), float32(0.5), float32(0.5)
-			if len(cs.Half) >= 1 {
-				hx = cs.Half[0]
+			if p.Friction <= 0 {
+				p.Friction = 0.6
 			}
-			if len(cs.Half) >= 2 {
-				hy = cs.Half[1]
+			if cs.Category != "" {
+				p.Category = strings.ToUpper(cs.Category)
+			} else {
+				p.Category = "MISC"
 			}
-			if len(cs.Half) >= 3 {
-				hz = cs.Half[2]
-			}
-			p.Half = bv(hx, hy, hz)
-		}
-		if len(cs.Color) >= 3 {
-			p.Color = rl.NewColor(uint8(cs.Color[0]), uint8(cs.Color[1]), uint8(cs.Color[2]), 255)
-		} else {
-			p.Color = rl.Gray
-		}
-		if p.Density <= 0 {
-			p.Density = 150
-		}
-		if p.Friction <= 0 {
-			p.Friction = 0.6
-		}
-		if cs.Category != "" {
-			p.Category = strings.ToUpper(cs.Category)
-		} else {
-			p.Category = "MISC"
-		}
-		presets = append(presets, p)
+			presets = append(presets, p)
 		}
 	}
 	walk("Content/Spawnables")
@@ -911,9 +913,12 @@ func buildModelMesh(model rl.Model) *box3d.MeshData {
 	return box3d.CreateMesh(&def, nil)
 }
 
-// buildModelHulls decomposes a model into multiple convex hulls by spatially
-// partitioning its vertices. This approximates concave geometry better than a
-// single hull while staying compatible with dynamic rigid bodies.
+// buildModelHulls decomposes a model into multiple convex hulls with an
+// adaptive k-d tree. A uniform grid leaves gaps wherever a limb or the head
+// happens to sit between cells, and it silently drops cells with too few
+// vertices. Splitting the point cloud in half along its longest axis instead
+// keeps every vertex inside a leaf, so thin limbs and the head always end up
+// with their own hulls.
 func buildModelHulls(model rl.Model) []*box3d.HullData {
 	var verts []box3d.Vec3
 	for _, mesh := range model.GetMeshes() {
@@ -930,86 +935,8 @@ func buildModelHulls(model rl.Model) []*box3d.HullData {
 	if len(verts) < 4 {
 		return nil
 	}
-	minX, minY, minZ := verts[0].X, verts[0].Y, verts[0].Z
-	maxX, maxY, maxZ := verts[0].X, verts[0].Y, verts[0].Z
-	for _, v := range verts {
-		if v.X < minX {
-			minX = v.X
-		}
-		if v.Y < minY {
-			minY = v.Y
-		}
-		if v.Z < minZ {
-			minZ = v.Z
-		}
-		if v.X > maxX {
-			maxX = v.X
-		}
-		if v.Y > maxY {
-			maxY = v.Y
-		}
-		if v.Z > maxZ {
-			maxZ = v.Z
-		}
-	}
-	sx := maxX - minX
-	sy := maxY - minY
-	sz := maxZ - minZ
-	if sx < 1e-6 {
-		sx = 1
-	}
-	if sy < 1e-6 {
-		sy = 1
-	}
-	if sz < 1e-6 {
-		sz = 1
-	}
-	const divs = 4
-	type cell struct {
-		pts []box3d.Vec3
-	}
-	cells := make(map[int]*cell)
-	for _, v := range verts {
-		ix := int((v.X - minX) / sx * divs)
-		iy := int((v.Y - minY) / sy * divs)
-		iz := int((v.Z - minZ) / sz * divs)
-		if ix < 0 {
-			ix = 0
-		}
-		if ix >= divs {
-			ix = divs - 1
-		}
-		if iy < 0 {
-			iy = 0
-		}
-		if iy >= divs {
-			iy = divs - 1
-		}
-		if iz < 0 {
-			iz = 0
-		}
-		if iz >= divs {
-			iz = divs - 1
-		}
-		key := ix + iy*divs + iz*divs*divs
-		c, ok := cells[key]
-		if !ok {
-			c = &cell{}
-			cells[key] = c
-		}
-		c.pts = append(c.pts, v)
-	}
 
-	var hulls []*box3d.HullData
-	for _, c := range cells {
-		if len(c.pts) < 4 {
-			continue
-		}
-		h := box3d.CreateHull(c.pts, len(c.pts), 24)
-		if h != nil {
-			hulls = append(hulls, h)
-		}
-	}
+	hulls := buildHullsFromPoints(verts)
 	if len(hulls) == 0 {
 		h := buildModelHull(model)
 		if h != nil {
@@ -1017,6 +944,142 @@ func buildModelHulls(model rl.Model) []*box3d.HullData {
 		}
 	}
 	return hulls
+}
+
+// buildHullsFromPoints splits a model-space vertex cloud with an adaptive k-d
+// tree and turns each leaf into a convex hull.
+func buildHullsFromPoints(verts []box3d.Vec3) []*box3d.HullData {
+	if len(verts) < 4 {
+		return nil
+	}
+
+	// A leaf of roughly 700 points gives a handful of hulls per body part
+	// without exploding the shape count. The depth limit stops pathological
+	// inputs (a perfectly flat sheet, for example) from recursing forever.
+	const (
+		leafSize = 700
+		maxDepth = 24
+		// box3d caps a hull at 256 half edges (128 edges). A convex
+		// polyhedron has roughly 3V-6 edges, so 40 vertices stays safely
+		// below the limit while keeping each piece detailed.
+		maxHullVerts = 40
+	)
+
+	var hulls []*box3d.HullData
+	var split func(pts []box3d.Vec3, depth int)
+	split = func(pts []box3d.Vec3, depth int) {
+		if len(pts) < 4 {
+			return
+		}
+		if len(pts) <= leafSize || depth >= maxDepth {
+			if h := createLeafHull(pts, maxHullVerts); h != nil {
+				hulls = append(hulls, h)
+			}
+			return
+		}
+
+		lower, upper := hullBounds(pts)
+		axis := hullLongestAxis(lower, upper)
+		mid := (hullAxisValue(lower, axis) + hullAxisValue(upper, axis)) * 0.5
+		lo, hi := hullPartition(pts, axis, mid)
+
+		// A midpoint split can collapse when the points are clustered, which
+		// would leave a side too small to form a hull. Fall back to the median
+		// so both halves always make progress and no vertex is discarded.
+		if len(lo) < 4 || len(hi) < 4 {
+			sort.Slice(pts, func(i, j int) bool {
+				return hullAxisValue(pts[i], axis) < hullAxisValue(pts[j], axis)
+			})
+			midIdx := len(pts) / 2
+			lo, hi = pts[:midIdx], pts[midIdx:]
+		}
+		if len(lo) < 4 || len(hi) < 4 {
+			return
+		}
+
+		split(lo, depth+1)
+		split(hi, depth+1)
+	}
+	split(verts, 0)
+	return hulls
+}
+
+// createLeafHull turns one k-d leaf into a convex hull. Flat leaves (surface
+// strips with no volume) are rejected by the hull builder, so a tiny
+// deterministic jitter is applied to give them just enough thickness to
+// produce a thin slab instead of a hole in the collision.
+func createLeafHull(pts []box3d.Vec3, maxVerts int) *box3d.HullData {
+	if h := box3d.CreateHull(pts, len(pts), maxVerts); h != nil {
+		return h
+	}
+	lower, upper := hullBounds(pts)
+	scale := maxf(upper.X-lower.X, maxf(upper.Y-lower.Y, upper.Z-lower.Z))
+	if scale < 1e-4 {
+		return nil
+	}
+	jitter := scale * 1e-3
+	jittered := make([]box3d.Vec3, len(pts))
+	for i, p := range pts {
+		f := float32((i%7)-3) / 3
+		jittered[i] = box3d.Vec3{
+			X: p.X + jitter*f,
+			Y: p.Y + jitter*f*f,
+			Z: p.Z + jitter*f*f*f,
+		}
+	}
+	return box3d.CreateHull(jittered, len(jittered), maxVerts)
+}
+
+func hullBounds(pts []box3d.Vec3) (box3d.Vec3, box3d.Vec3) {
+	lower, upper := pts[0], pts[0]
+	for _, p := range pts {
+		lower.X = minf(lower.X, p.X)
+		lower.Y = minf(lower.Y, p.Y)
+		lower.Z = minf(lower.Z, p.Z)
+		upper.X = maxf(upper.X, p.X)
+		upper.Y = maxf(upper.Y, p.Y)
+		upper.Z = maxf(upper.Z, p.Z)
+	}
+	return lower, upper
+}
+
+func hullLongestAxis(lower, upper box3d.Vec3) int {
+	dx := upper.X - lower.X
+	dy := upper.Y - lower.Y
+	dz := upper.Z - lower.Z
+	if dx >= dy && dx >= dz {
+		return 0
+	}
+	if dy >= dz {
+		return 1
+	}
+	return 2
+}
+
+func hullAxisValue(p box3d.Vec3, axis int) float32 {
+	switch axis {
+	case 0:
+		return p.X
+	case 1:
+		return p.Y
+	default:
+		return p.Z
+	}
+}
+
+// hullPartition moves every point at or below mid to the front of the slice
+// and returns the two halves. It partitions in place, so no points are copied.
+func hullPartition(pts []box3d.Vec3, axis int, mid float32) ([]box3d.Vec3, []box3d.Vec3) {
+	i, j := 0, len(pts)-1
+	for i <= j {
+		if hullAxisValue(pts[i], axis) <= mid {
+			i++
+		} else {
+			pts[i], pts[j] = pts[j], pts[i]
+			j--
+		}
+	}
+	return pts[:i], pts[i:]
 }
 
 func buildModelHull(model rl.Model) *box3d.HullData {
@@ -1197,9 +1260,15 @@ func (g *Game) loadMap(withStarter bool, mapName string) {
 		rot = box3d.MulQuat(box3d.MakeQuatFromAxisAngle(box3d.Vec3{Z: 1}, s.Roll), rot)
 		rot = normalizeQuat(rot)
 		hx, hy, hz := float32(0.5), float32(0.5), float32(0.5)
-		if s.Half.X != 0 { hx = s.Half.X }
-		if s.Half.Y != 0 { hy = s.Half.Y }
-		if s.Half.Z != 0 { hz = s.Half.Z }
+		if s.Half.X != 0 {
+			hx = s.Half.X
+		}
+		if s.Half.Y != 0 {
+			hy = s.Half.Y
+		}
+		if s.Half.Z != 0 {
+			hz = s.Half.Z
+		}
 		g.addBoxEntity(true, bp(s.Pos.X, s.Pos.Y, s.Pos.Z), rot, bv(hx, hy, hz), col, s.Name, 1000, 0.7, 0.0)
 	}
 
