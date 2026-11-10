@@ -552,8 +552,9 @@ func (g *Game) drawBillboards() {
 }
 
 // drawBillboardLabels renders billboard element text in the 2D UI pass. Text
-// uses screen-space pixel sizes so it stays readable at any distance, while a
-// cheap physics ray hides labels that are behind walls or props.
+// uses screen-space pixel sizes so it stays readable at any distance, while
+// per-glyph physics rays hide only the parts of a label that are behind walls
+// or props.
 func (g *Game) drawBillboardLabels() {
 	if len(g.modBillboards) == 0 {
 		return
@@ -591,9 +592,6 @@ func (g *Game) drawBillboardLabels() {
 				b.Pos.Y+right.Y*el.X+up.Y*el.Y,
 				b.Pos.Z+right.Z*el.X+up.Z*el.Y,
 			)
-			if !g.billboardPointVisible(world) {
-				continue
-			}
 			sp := rl.GetWorldToScreen(world, g.camera)
 			size := el.TextSize
 			if size <= 0 {
@@ -617,12 +615,94 @@ func (g *Game) drawBillboardLabels() {
 					size = 1
 				}
 			}
+			// The label lives on the screen-aligned panel plane, so one world
+			// unit per screen pixel at the panel depth lets each glyph be
+			// tested against geometry individually.
+			depth := (world.X-camPos.X)*camFwd.X + (world.Y-camPos.Y)*camFwd.Y + (world.Z-camPos.Z)*camFwd.Z
+			if depth <= 0.01 {
+				continue
+			}
+			fovy := g.camera.Fovy
+			if fovy <= 1 {
+				fovy = 60
+			}
+			scrH := float32(rl.GetScreenHeight())
+			if scrH <= 0 {
+				scrH = 1
+			}
+			worldPerPixel := 2 * depth * float32(math.Tan(float64(fovy)*math.Pi/360)) / scrH
 			tw := g.textWidth(el.Label, size)
-			x := sp.X/s - tw*0.5
-			y := sp.Y/s - size*0.5
-			g.drawText(el.Label, x+1, y+1, size, rgba(0, 0, 0, 210))
-			g.drawText(el.Label, x, y, size, el.TextColor)
+			g.drawBillboardLabel(el.Label, world, sp, size, tw, right, worldPerPixel, el.TextColor)
 		}
+	}
+}
+
+// drawBillboardLabel draws one label glyph by glyph, testing each character
+// against world geometry. A single ray at the label center used to hide the
+// whole string as soon as its middle was blocked, letting the remaining
+// characters show through the object. Sampling per glyph and drawing only the
+// visible runs keeps partially occluded text correct.
+func (g *Game) drawBillboardLabel(label string, world rl.Vector3, sp rl.Vector2, size, tw float32, right rl.Vector3, worldPerPixel float32, col rl.Color) {
+	s := g.uiScale()
+	if s <= 0 {
+		s = 1
+	}
+	x := sp.X/s - tw*0.5
+	y := sp.Y/s - size*0.5
+
+	// Multi-line labels are uncommon; fall back to a single center test so the
+	// simple case never loses its shadow or line spacing.
+	if strings.ContainsAny(label, "\n\r") {
+		if g.billboardPointVisible(world) {
+			g.drawText(label, x+1, y+1, size, rgba(0, 0, 0, 210))
+			g.drawText(label, x, y, size, col)
+		}
+		return
+	}
+
+	runes := []rune(label)
+	if len(runes) == 0 {
+		return
+	}
+
+	// raylib lays out glyphs by advance + 1px spacing. Reproduce that here so
+	// each sampled world point lines up with the pixel the glyph is drawn at.
+	const spacing = 1.0
+	offsets := make([]float32, len(runes))
+	visible := make([]bool, len(runes))
+	cursor := float32(0)
+	for i, r := range runes {
+		cw := g.textWidth(string(r), size)
+		offsets[i] = cursor
+		mid := cursor + cw*0.5
+		// Screen-space horizontal offset from the label center, converted to
+		// world units on the screen-aligned panel plane.
+		dx := (mid - tw*0.5) * s * worldPerPixel
+		p := rlv(
+			world.X+right.X*dx,
+			world.Y+right.Y*dx,
+			world.Z+right.Z*dx,
+		)
+		visible[i] = g.billboardPointVisible(p)
+		cursor += cw + spacing
+	}
+
+	// Draw maximal runs of visible glyphs so text stays batched instead of
+	// issuing one draw call per character.
+	for i := 0; i < len(runes); {
+		if !visible[i] {
+			i++
+			continue
+		}
+		j := i
+		for j < len(runes) && visible[j] {
+			j++
+		}
+		run := string(runes[i:j])
+		rx := x + offsets[i]
+		g.drawText(run, rx+1, y+1, size, rgba(0, 0, 0, 210))
+		g.drawText(run, rx, y, size, col)
+		i = j
 	}
 }
 

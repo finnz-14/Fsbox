@@ -222,6 +222,7 @@ func (g *Game) spawnSaved(ps propSave) bool {
 				e.Model = contentPreset.Model
 				e.HasModel = true
 			}
+			applyPresetAnimations(e, *contentPreset)
 		} else {
 			e = g.addBoxEntity(false, pos, rot, half, c, name, density, friction, ps.Restitution)
 		}

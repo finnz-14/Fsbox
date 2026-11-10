@@ -278,6 +278,7 @@ type Entity struct {
 	AnimCurrent int32
 	AnimFrame   float32
 	AnimPlaying bool
+	AnimActive  bool
 	AnimSpeed   float32
 }
 
@@ -681,38 +682,20 @@ func (g *Game) spawnPreset(p ShapePreset, pos box3d.Pos, rot box3d.Quat, c rl.Co
 	case PropBox:
 		if len(p.Hulls) > 0 {
 			e := g.addHullsEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Hulls, p.Model, p.HasModel)
-			if p.HasModel && len(p.Animations) > 0 {
-				e.Animations = p.Animations
-				e.AnimCurrent = 0
-				e.AnimFrame = 0
-				e.AnimPlaying = false
-				e.AnimSpeed = 1
-			}
+			applyPresetAnimations(e, p)
 			return e
 		}
 		if p.Hull != nil {
 			e := g.addHullEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Hull, p.Model, p.HasModel)
-			if p.HasModel && len(p.Animations) > 0 {
-				e.Animations = p.Animations
-				e.AnimCurrent = 0
-				e.AnimFrame = 0
-				e.AnimPlaying = false
-				e.AnimSpeed = 1
-			}
+			applyPresetAnimations(e, p)
 			return e
 		}
 		e := g.addBoxEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution)
 		if p.HasModel {
 			e.Model = p.Model
 			e.HasModel = true
-			e.Animations = p.Animations
-			if len(p.Animations) > 0 {
-				e.AnimCurrent = 0
-				e.AnimFrame = 0
-				e.AnimPlaying = false
-				e.AnimSpeed = 1
-			}
 		}
+		applyPresetAnimations(e, p)
 		e.Hull = p.Hull
 		return e
 	case PropSphere:
@@ -721,6 +704,21 @@ func (g *Game) spawnPreset(p ShapePreset, pos box3d.Pos, rot box3d.Quat, c rl.Co
 		return g.addCylinderEntity(pos, rot, p.Radius, p.Height, c, p.Name, p.Density, p.Friction, p.Restitution)
 	}
 	return nil
+}
+
+// applyPresetAnimations installs a preset's animation list on a freshly
+// spawned entity. Every instance gets its own playback state (frame counter,
+// current clip, play flag) even though the animation data itself is shared.
+func applyPresetAnimations(e *Entity, p ShapePreset) {
+	if e == nil || !p.HasModel || len(p.Animations) == 0 {
+		return
+	}
+	e.Animations = p.Animations
+	e.AnimCurrent = 0
+	e.AnimFrame = 0
+	e.AnimPlaying = false
+	e.AnimActive = false
+	e.AnimSpeed = 1
 }
 
 func (g *Game) resetWorld(withStarter bool, spawn box3d.Pos, yaw, pitch float32, fly bool) {
@@ -1097,8 +1095,11 @@ func (g *Game) updateHeldRotation() {
 	}
 	e := g.held
 	q := e.Body.GetRotation()
-	yawQ := box3d.MakeQuatFromAxisAngle(box3d.Vec3{Y: 1}, -md.X*sens)
-	pitchQ := box3d.MakeQuatFromAxisAngle(toBv(g.cameraRightAxis()), -md.Y*sens)
+	// Follow the mouse: moving right turns the prop right and moving up tips
+	// its top away from the camera, matching the drag direction instead of
+	// mirroring it.
+	yawQ := box3d.MakeQuatFromAxisAngle(box3d.Vec3{Y: 1}, md.X*sens)
+	pitchQ := box3d.MakeQuatFromAxisAngle(toBv(g.cameraRightAxis()), md.Y*sens)
 	q = box3d.MulQuat(pitchQ, box3d.MulQuat(yawQ, q))
 	e.Body.SetTransform(e.Body.GetPosition(), q)
 	e.Body.SetAngularVelocity(box3d.Vec3Zero)
@@ -1272,18 +1273,22 @@ func (g *Game) spawnCopy(e *Entity, pos box3d.Pos, rot box3d.Quat) *Entity {
 	}
 	switch e.Kind {
 	case PropBox:
+		var ne *Entity
 		if len(e.Hulls) > 0 {
-			return g.addHullsEntity(false, pos, rot, e.Half, e.Color, e.Name, e.Density, e.Friction, e.Restitution, e.Hulls, e.Model, e.HasModel)
+			ne = g.addHullsEntity(false, pos, rot, e.Half, e.Color, e.Name, e.Density, e.Friction, e.Restitution, e.Hulls, e.Model, e.HasModel)
+		} else if e.Hull != nil {
+			ne = g.addHullEntity(false, pos, rot, e.Half, e.Color, e.Name, e.Density, e.Friction, e.Restitution, e.Hull, e.Model, e.HasModel)
+		} else {
+			ne = g.addBoxEntity(false, pos, rot, e.Half, e.Color, e.Name, e.Density, e.Friction, e.Restitution)
+			if ne != nil {
+				ne.Model = e.Model
+				ne.HasModel = e.HasModel
+				ne.Hull = e.Hull
+				ne.Hulls = e.Hulls
+				ne.Mesh = e.Mesh
+			}
 		}
-		if e.Hull != nil {
-			return g.addHullEntity(false, pos, rot, e.Half, e.Color, e.Name, e.Density, e.Friction, e.Restitution, e.Hull, e.Model, e.HasModel)
-		}
-		ne := g.addBoxEntity(false, pos, rot, e.Half, e.Color, e.Name, e.Density, e.Friction, e.Restitution)
-		ne.Model = e.Model
-		ne.HasModel = e.HasModel
-		ne.Hull = e.Hull
-		ne.Hulls = e.Hulls
-		ne.Mesh = e.Mesh
+		copyEntityAnimation(ne, e)
 		return ne
 	case PropSphere:
 		return g.addSphereEntity(pos, rot, e.Radius, e.Color, e.Name, e.Density, e.Friction, e.Restitution)

@@ -217,6 +217,10 @@ func (g *Game) drawEntityShape(e *Entity, p rl.Vector3, q box3d.Quat, c, edge rl
 	if e.HasModel {
 		axis, angle := quatAxisAngle(q)
 		scale := rlv(1, 1, 1)
+		// Apply this instance's pose right before its draw. Models share their
+		// mesh vertex buffers, so doing this earlier would let the last entity
+		// overwrite every other instance of the same model.
+		applyEntityPose(e)
 		// Content models are authored double-sided (glTF doubleSided=true), so
 		// keep both faces visible instead of letting the default culling carve
 		// holes out of the mesh.
@@ -325,6 +329,9 @@ func (g *Game) drawGhost() {
 	switch p.Kind {
 	case PropBox:
 		if p.HasModel {
+			// The ghost shows the preset in its bind pose, never a pose left
+			// behind by an animated instance that shares this model.
+			resetModelBindPose(p.Model)
 			rl.DisableBackfaceCulling()
 			rl.DrawModelEx(p.Model, pos, rlv(0, 1, 0), 0, rlv(pulse, pulse, pulse), col)
 			rl.EnableBackfaceCulling()

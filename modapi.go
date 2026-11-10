@@ -2071,6 +2071,12 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		}
 		e.Model = m
 		e.HasModel = true
+		e.Animations = g.modModelAnims[a.Model]
+		e.AnimCurrent = 0
+		e.AnimFrame = 0
+		e.AnimPlaying = false
+		e.AnimActive = false
+		e.AnimSpeed = 1
 		return true, nil
 	case "entity.get_animations":
 		e, err := g.entityFromArgs(args)
@@ -2133,6 +2139,7 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		e.AnimCurrent = idx
 		e.AnimFrame = 0
 		e.AnimPlaying = true
+		e.AnimActive = true
 		if a.Speed != nil {
 			e.AnimSpeed = *a.Speed
 		} else {
@@ -2158,6 +2165,7 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 			return false, nil
 		}
 		e.AnimPlaying = true
+		e.AnimActive = true
 		return true, nil
 	case "entity.set_animation_speed":
 		e, err := g.entityFromArgs(args)
@@ -2185,6 +2193,7 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		}
 		e.AnimPlaying = false
 		e.AnimFrame = 0
+		e.AnimActive = false
 		return true, nil
 	}
 	return nil, fmt.Errorf("unknown command %q", cmd)

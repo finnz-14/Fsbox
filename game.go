@@ -620,7 +620,7 @@ func (g *Game) Update(dt float64) {
 		g.updateWaves(float32(simDt))
 		g.updateModParticles(float32(simDt))
 		g.updateMusic()
-		g.updateAnimations(float32(simDt))
+		g.advanceAnimations(float32(simDt))
 		if g.shake > 0 {
 			g.shake -= simDt
 			if g.shake < 0 {
@@ -856,14 +856,9 @@ func (g *Game) updateActionInput() {
 		g.toggleFly()
 	}
 	if rl.IsKeyPressed(rl.KeyF) {
-		// F is the physgun grab/throw alias; every other tool uses it to
-		// freeze the aimed or held body. Binding both actions at once froze
-		// the prop and then immediately dropped it.
-		if g.tool == toolPhysgun {
-			g.primaryAction()
-		} else {
-			g.freezeAimed()
-		}
+		// F is freeze/thaw only. Grabbing and throwing stay on the mouse
+		// buttons so the two actions never fire from the same key press.
+		g.freezeAimed()
 	}
 	if rl.IsKeyPressed(rl.KeyG) {
 		g.cycleGravity()

@@ -240,7 +240,7 @@ func (g *Game) drawControlHints(w, h float32) {
 	lines := []string{
 		"E  SPAWN    C  TOOLS    1-7  MODE",
 		"WHEEL  DISTANCE    CTRL+WHEEL  TOOL",
-		"F  GRAB / FREEZE    V  FLY    F1  MANUAL",
+		"F  FREEZE    LMB  GRAB    V  FLY    F1  MANUAL",
 		"HOLD E / R + MOUSE  ROTATE PROP",
 		"F5  SAVE    F9  LOAD    F2  SETTINGS",
 	}
@@ -348,7 +348,6 @@ func (g *Game) drawHelp() {
 		{"SPACE", "Jump"},
 		{"V", "Toggle fly mode"},
 		{"SPACE / CTRL", "Fly altitude"},
-		{"F", "Grab (physgun) / freeze"},
 	})
 	drawSection("TOOL GUN", left, endLeft+8, [][2]string{
 		{"LMB", "Primary tool action"},
@@ -357,7 +356,7 @@ func (g *Game) drawHelp() {
 		{"CTRL + WHEEL", "Cycle tool mode"},
 		{"1 - 7", "Equip tool mode"},
 		{"C", "Open tool selector"},
-		{"F", "Physgun grab / throw"},
+		{"F", "Freeze / thaw aimed prop"},
 		{"HOLD E / R + MOUSE", "Rotate held prop"},
 	})
 
@@ -377,7 +376,7 @@ func (g *Game) drawHelp() {
 		{"CTRL + DEL", "Clear all props"},
 	})
 
-	note := "PHYSGUN grabs, throws and pushes. Hold E or R and move the mouse to rotate a held prop. F grabs with the physgun or freezes any body. DUPLICATOR copies matter. IMPACT moves everything."
+	note := "PHYSGUN grabs, throws and pushes. Hold E or R and move the mouse to rotate a held prop. F freezes or thaws any body. DUPLICATOR copies matter. IMPACT moves everything."
 	g.drawTextSpaced(note, rec.X+36, rec.Y+rec.Height-88, 9.5, 1.1, withAlpha(colMuted, 215))
 	g.drawMenuButton(g.resumeButtonRect(), "RESUME SESSION", false)
 }

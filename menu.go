@@ -963,6 +963,9 @@ func (g *Game) renderPresetPreview(p ShapePreset, rt rl.RenderTexture2D) {
 	rl.BeginMode3D(cam)
 	rl.DisableBackfaceCulling()
 	if p.HasModel {
+		// Previews always show the bind pose. The model's vertex buffers are
+		// shared with any spawned instances, so reset them before rendering.
+		resetModelBindPose(p.Model)
 		rl.DrawModelEx(p.Model, rlv(0, 0, 0), rlv(0, 1, 0), 0, rlv(1, 1, 1), rl.White)
 	} else {
 		drawPresetMesh3D(p)
