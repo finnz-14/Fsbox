@@ -587,6 +587,7 @@ func (g *Game) Update(dt float64) {
 		g.updateAim()
 		g.updateGhost()
 		g.updateActionInput()
+		g.updateHeldRotation()
 	} else {
 		g.aim = nil
 		g.ghostOK = false
@@ -700,7 +701,7 @@ func (g *Game) updateUIInput() {
 			g.state = stateMainMenu
 		}
 	}
-	if rl.IsKeyPressed(rl.KeyF1) || rl.IsKeyPressed(rl.KeyH) {
+	if rl.IsKeyPressed(rl.KeyF1) {
 		switch g.state {
 		case statePlaying:
 			g.state = stateHelp
@@ -855,7 +856,14 @@ func (g *Game) updateActionInput() {
 		g.toggleFly()
 	}
 	if rl.IsKeyPressed(rl.KeyF) {
-		g.freezeAimed()
+		// F is the physgun grab/throw alias; every other tool uses it to
+		// freeze the aimed or held body. Binding both actions at once froze
+		// the prop and then immediately dropped it.
+		if g.tool == toolPhysgun {
+			g.primaryAction()
+		} else {
+			g.freezeAimed()
+		}
 	}
 	if rl.IsKeyPressed(rl.KeyG) {
 		g.cycleGravity()
@@ -874,10 +882,6 @@ func (g *Game) updateActionInput() {
 	}
 	if rl.IsMouseButtonPressed(rl.MouseButtonRight) {
 		g.secondaryAction()
-	}
-	// F is kept as the physgun grab/throw alias (E now opens the spawn menu).
-	if rl.IsKeyPressed(rl.KeyF) && g.tool == toolPhysgun {
-		g.primaryAction()
 	}
 }
 

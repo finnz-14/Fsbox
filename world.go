@@ -245,40 +245,40 @@ func propKindFromString(s string) (PropKind, bool) {
 // Entity is one renderable rigid body. Static arena geometry and dynamic props
 // share this type; only dynamic entities are saved and targetable.
 type Entity struct {
-	ID          int32
-	Body        box3d.BodyID
-	Kind        PropKind
-	Half        box3d.Vec3
-	Radius      float32
-	Height      float32
-	Sides       int
-	Color       rl.Color
-	Name        string
-	Static      bool
-	Frozen      bool
+	ID           int32
+	Body         box3d.BodyID
+	Kind         PropKind
+	Half         box3d.Vec3
+	Radius       float32
+	Height       float32
+	Sides        int
+	Color        rl.Color
+	Name         string
+	Static       bool
+	Frozen       bool
 	Invulnerable bool
-	Transient   bool
-	Health      float32
-	MaxHealth   float32
-	Density     float32
-	Friction    float32
-	Restitution float32
-	SpawnedAt   float64
-	Model       rl.Model
-	HasModel    bool
-	Hull        *box3d.HullData
-	Hulls       []*box3d.HullData
-	Mesh        *box3d.MeshData
-	Owner       string
+	Transient    bool
+	Health       float32
+	MaxHealth    float32
+	Density      float32
+	Friction     float32
+	Restitution  float32
+	SpawnedAt    float64
+	Model        rl.Model
+	HasModel     bool
+	Hull         *box3d.HullData
+	Hulls        []*box3d.HullData
+	Mesh         *box3d.MeshData
+	Owner        string
 
 	// Model animations (glTF, etc.). Loaded alongside the model; per-entity
 	// playback state lives here so multiple instances of the same model can
 	// play different animations.
-	Animations   []rl.ModelAnimation
-	AnimCurrent  int32
-	AnimFrame    float32
-	AnimPlaying  bool
-	AnimSpeed    float32
+	Animations  []rl.ModelAnimation
+	AnimCurrent int32
+	AnimFrame   float32
+	AnimPlaying bool
+	AnimSpeed   float32
 }
 
 func (e *Entity) position() rl.Vector3 {
@@ -1013,19 +1013,6 @@ func (g *Game) updateHeld(dt float32) {
 			g.holdDist = clampf(g.holdDist-0.15, minPlaceDist, maxPlaceDist)
 		}
 	}
-	// When rotating, apply rotation directly around the grab point instead of
-	// spinning around the centre of mass.
-	if rl.IsKeyDown(rl.KeyE) || rl.IsKeyDown(rl.KeyR) {
-		md := rl.GetMouseDelta()
-		right := toBv(normRl(rl.Vector3CrossProduct(g.cameraForward(), rlv(0, 1, 0))))
-		scale := float32(0.003)
-		q := e.Body.GetRotation()
-		yawQ := box3d.MakeQuatFromAxisAngle(box3d.Vec3{Y: 1}, -md.X*scale)
-		pitchQ := box3d.MakeQuatFromAxisAngle(right, -md.Y*scale)
-		q = box3d.MulQuat(pitchQ, box3d.MulQuat(yawQ, q))
-		e.Body.SetTransform(e.Body.GetPosition(), q)
-		e.Body.SetAngularVelocity(box3d.Vec3Zero)
-	}
 	target := g.eyePosition()
 	dir := g.cameraForward()
 	target.X += dir.X * g.holdDist
@@ -1071,6 +1058,50 @@ func (g *Game) updateHeld(dt float32) {
 	if !rl.IsKeyDown(rl.KeyR) {
 		e.Body.SetAngularVelocity(bv(av.X*0.9, av.Y*0.9, av.Z*0.9))
 	}
+}
+
+// cameraRightAxis is the horizontal right vector of the view, with a yaw-based
+// fallback so pitch rotation keeps working when the camera looks straight up or
+// down (where forward x up collapses to zero).
+func (g *Game) cameraRightAxis() rl.Vector3 {
+	fwd := g.cameraViewForward()
+	r := rl.Vector3CrossProduct(fwd, rlv(0, 1, 0))
+	if lenRl(r) < 1e-4 {
+		yaw := float32(0)
+		if g.player != nil {
+			yaw = g.player.yaw
+		}
+		r = rlv(float32(math.Cos(float64(yaw))), 0, float32(math.Sin(float64(yaw))))
+	}
+	return normRl(r)
+}
+
+// updateHeldRotation applies mouse-driven rotation once per rendered frame.
+// It runs outside the fixed-step loop because GetMouseDelta returns a per-frame
+// value: applying it inside tick() made rotation speed scale with the number
+// of physics steps (and therefore with frame rate).
+func (g *Game) updateHeldRotation() {
+	if g.state != statePlaying || g.held == nil {
+		return
+	}
+	if !rl.IsKeyDown(rl.KeyE) && !rl.IsKeyDown(rl.KeyR) {
+		return
+	}
+	md := rl.GetMouseDelta()
+	if md.X == 0 && md.Y == 0 {
+		return
+	}
+	sens := float32(0.003) * g.settings.Sensitivity
+	if sens <= 0 {
+		sens = 0.003
+	}
+	e := g.held
+	q := e.Body.GetRotation()
+	yawQ := box3d.MakeQuatFromAxisAngle(box3d.Vec3{Y: 1}, -md.X*sens)
+	pitchQ := box3d.MakeQuatFromAxisAngle(toBv(g.cameraRightAxis()), -md.Y*sens)
+	q = box3d.MulQuat(pitchQ, box3d.MulQuat(yawQ, q))
+	e.Body.SetTransform(e.Body.GetPosition(), q)
+	e.Body.SetAngularVelocity(box3d.Vec3Zero)
 }
 
 func (g *Game) deleteAimed() {

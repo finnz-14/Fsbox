@@ -548,6 +548,36 @@ func TestBillboardTextWorldFlag(t *testing.T) {
 	}
 }
 
+func TestBillboardsRenderOnlyWhilePlaying(t *testing.T) {
+	g := &Game{}
+	g.state = statePlaying
+	if !g.billboardsVisible() {
+		t.Fatal("billboards should render while playing")
+	}
+	for _, s := range []UIState{
+		stateMainMenu, stateMapMenu, stateModsMenu, statePaused,
+		stateHelp, stateSettings, stateSpawn, stateToolMenu,
+	} {
+		g.state = s
+		if g.billboardsVisible() {
+			t.Fatalf("billboards leaked into state %d", s)
+		}
+	}
+}
+
+func TestBillboardHoverClearsOutsideGameplay(t *testing.T) {
+	g := &Game{
+		state:                  stateSpawn,
+		modBillboardHoverPanel: 4,
+		modBillboardHoverElem:  12,
+	}
+	g.updateBillboardHover()
+	if g.modBillboardHoverPanel != 0 || g.modBillboardHoverElem != 0 {
+		t.Fatalf("hover survived an overlay: panel=%d element=%d",
+			g.modBillboardHoverPanel, g.modBillboardHoverElem)
+	}
+}
+
 func TestBillboardHoverCommandReportsStoredHit(t *testing.T) {
 	g := &Game{modBillboardHoverPanel: 4, modBillboardHoverElem: 12}
 	raw, err := g.ModCall("mod.a", "ui.billboard_hover", nil)

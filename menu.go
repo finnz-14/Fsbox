@@ -830,8 +830,8 @@ func (g *Game) drawSpawnDetail() {
 const (
 	modelPreviewW = 520
 	modelPreviewH = 250
-	thumbPreviewW = 256
-	thumbPreviewH = 192
+	thumbPreviewW = 320
+	thumbPreviewH = 200
 )
 
 // previewSignature identifies the current preset list so cached thumbnails are
@@ -942,14 +942,17 @@ func (g *Game) renderPresetPreview(p ShapePreset, rt rl.RenderTexture2D) {
 	// overwrites the projection and EndTextureMode does not restore it.
 	rl.EndMode2D()
 	rl.BeginTextureMode(rt)
-	rl.ClearBackground(rgba(8, 9, 10, 255))
+	// Transparent so the thumbnail sits directly on the spawn card instead of
+	// carrying its own dark letterboxed viewport. The inspection well draws
+	// its own backing rectangle underneath.
+	rl.ClearBackground(rl.Blank)
 
 	// Frame the model from its bounding box so packs authored at wildly
 	// different scales still fill the well sensibly.
 	r := presetFrameRadius(p)
 	dir := rlv(0.55, 0.24, 1.0)
 	dl := float32(math.Sqrt(float64(dir.X*dir.X + dir.Y*dir.Y + dir.Z*dir.Z)))
-	dist := r * 3.1
+	dist := r * 2.8
 	cam := rl.Camera3D{
 		Position:   rlv(dir.X/dl*dist, dir.Y/dl*dist, dir.Z/dl*dist),
 		Target:     rlv(0, 0, 0),

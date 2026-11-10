@@ -238,15 +238,16 @@ func (g *Game) drawToolStatus(w, h float32) {
 
 func (g *Game) drawControlHints(w, h float32) {
 	lines := []string{
-		"Q  SPAWN    C  TOOLS    1-7  MODE",
+		"E  SPAWN    C  TOOLS    1-7  MODE",
 		"WHEEL  DISTANCE    CTRL+WHEEL  TOOL",
-		"F  FREEZE    V  FLY    F1  MANUAL",
+		"F  GRAB / FREEZE    V  FLY    F1  MANUAL",
+		"HOLD E / R + MOUSE  ROTATE PROP",
 		"F5  SAVE    F9  LOAD    F2  SETTINGS",
 	}
 	x := w - 18
 	for i, line := range lines {
 		lw := g.textWidthSpaced(line, 10, 1.2)
-		g.drawTextSpaced(line, x-lw, h-84+float32(i)*18, 10, 1.2, withAlpha(colMuted, 195))
+		g.drawTextSpaced(line, x-lw, h-102+float32(i)*18, 10, 1.2, withAlpha(colMuted, 195))
 	}
 }
 
@@ -347,7 +348,7 @@ func (g *Game) drawHelp() {
 		{"SPACE", "Jump"},
 		{"V", "Toggle fly mode"},
 		{"SPACE / CTRL", "Fly altitude"},
-		{"F", "Freeze / thaw target"},
+		{"F", "Grab (physgun) / freeze"},
 	})
 	drawSection("TOOL GUN", left, endLeft+8, [][2]string{
 		{"LMB", "Primary tool action"},
@@ -356,7 +357,8 @@ func (g *Game) drawHelp() {
 		{"CTRL + WHEEL", "Cycle tool mode"},
 		{"1 - 7", "Equip tool mode"},
 		{"C", "Open tool selector"},
-		{"E", "Physgun grab / throw"},
+		{"F", "Physgun grab / throw"},
+		{"HOLD E / R + MOUSE", "Rotate held prop"},
 	})
 
 	endRight := drawSection("SPAWNING", right, sectionY, [][2]string{
@@ -375,7 +377,7 @@ func (g *Game) drawHelp() {
 		{"CTRL + DEL", "Clear all props"},
 	})
 
-	note := "PHYSGUN grabs, throws and pushes. F freezes any body. DUPLICATOR copies matter. IMPACT moves everything."
+	note := "PHYSGUN grabs, throws and pushes. Hold E or R and move the mouse to rotate a held prop. F grabs with the physgun or freezes any body. DUPLICATOR copies matter. IMPACT moves everything."
 	g.drawTextSpaced(note, rec.X+36, rec.Y+rec.Height-88, 9.5, 1.1, withAlpha(colMuted, 215))
 	g.drawMenuButton(g.resumeButtonRect(), "RESUME SESSION", false)
 }

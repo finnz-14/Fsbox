@@ -101,18 +101,11 @@ func init() {
 }
 
 func forgetWorld() {
-	if panelID != 0 {
-		_ = fsbox.RemoveBillboardPanel(panelID)
-	}
+	hidePanel()
 	jennyEntity = 0
 	spawned = false
 	nextTry = 0
 	guiOpen = false
-	panelID = 0
-	rowIDs = nil
-	playBtnID = 0
-	stopBtnID = 0
-	statusID = 0
 	animations = nil
 	scroll = 0
 	selAnim = -1
@@ -157,8 +150,14 @@ func tick() {
 		togglePanel()
 	}
 
-	if panelID == 0 && guiOpen {
+	player, _ := fsbox.GetPlayerInfo()
+	show := guiOpen && panelShouldShow(ent.Position, player)
+
+	if show && panelID == 0 {
 		buildPanel()
+	}
+	if !show && panelID != 0 {
+		hidePanel()
 	}
 	if panelID == 0 {
 		return
@@ -172,9 +171,9 @@ func tick() {
 		ent.Position.Z,
 	)
 
-	// Only take the wheel while actually playing, so the spawn and tool menus
-	// keep their own scrolling.
-	if guiOpen && info.State == "playing" && nearPlayer(ent.Position) {
+	// Only take the wheel while actually playing and in range, so the spawn
+	// and tool menus keep their own scrolling.
+	if guiOpen && info.State == "playing" && panelShouldShow(ent.Position, player) {
 		handleScroll()
 	}
 }
@@ -226,15 +225,42 @@ func trySpawn(info fsbox.EngineInfo) {
 	fsbox.Log(fmt.Sprintf("[Jenny] spawned entity %d with %d animations", id, len(animations)))
 }
 
-func nearPlayer(p fsbox.Vec3) bool {
-	player, err := fsbox.GetPlayerInfo()
-	if err != nil {
+// panelShouldShow decides whether the browser should exist right now. The panel
+// is world-space, but keeping it alive after the player has walked away or
+// turned their back leaves an invisible panel consuming input. The mod removes
+// it and rebuilds it when the player comes back into view. Hysteresis stops the
+// panel flickering while strafing near the edge of the interaction range.
+func panelShouldShow(entPos fsbox.Vec3, player fsbox.PlayerInfo) bool {
+	px := entPos.X + panelOffsetX
+	py := entPos.Y + panelOffsetY
+	pz := entPos.Z
+
+	dx := px - player.Position.X
+	dy := py - (player.Position.Y + 1.5)
+	dz := pz - player.Position.Z
+	dist2 := dx*dx + dy*dy + dz*dz
+
+	maxDist := float32(interactDist)
+	dotMin := float32(0.35)
+	if panelID != 0 {
+		maxDist += 2.5
+		dotMin = 0.10
+	}
+	if dist2 > maxDist*maxDist {
 		return false
 	}
-	dx := p.X - player.Position.X
-	dy := p.Y - player.Position.Y
-	dz := p.Z - player.Position.Z
-	return dx*dx+dy*dy+dz*dz <= interactDist*interactDist
+
+	l := float32(math.Sqrt(float64(dist2)))
+	if l < 0.001 {
+		return true
+	}
+	fx, fy, fz := player.Forward.X, player.Forward.Y, player.Forward.Z
+	fl := float32(math.Sqrt(float64(fx*fx + fy*fy + fz*fz)))
+	if fl < 1e-4 {
+		return true
+	}
+	dot := (dx*fx + dy*fy + dz*fz) / (l * fl)
+	return dot >= dotMin
 }
 
 // ---------------------------------------------------------------------------
@@ -296,18 +322,23 @@ func buildPanel() {
 }
 
 func togglePanel() {
+	guiOpen = !guiOpen
+	if !guiOpen {
+		hidePanel()
+	}
+}
+
+// hidePanel removes the world-space panel but keeps guiOpen intact, so the
+// browser can be rebuilt when the player returns or looks back at Jenny.
+func hidePanel() {
 	if panelID != 0 {
 		_ = fsbox.RemoveBillboardPanel(panelID)
-		panelID = 0
-		rowIDs = nil
-		playBtnID = 0
-		stopBtnID = 0
-		statusID = 0
-		guiOpen = false
-		return
 	}
-	guiOpen = true
-	buildPanel()
+	panelID = 0
+	rowIDs = nil
+	playBtnID = 0
+	stopBtnID = 0
+	statusID = 0
 }
 
 func refreshRows() {

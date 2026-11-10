@@ -456,11 +456,19 @@ func (g *Game) billboardBasis() (rl.Vector3, rl.Vector3) {
 	return right, up
 }
 
+// billboardsVisible reports whether world-space mod billboards should render.
+// Billboards are world geometry, so they must not bleed through full-screen
+// menus and overlays. Hiding them while any overlay is open also keeps hover
+// and click state from leaking into the menu.
+func (g *Game) billboardsVisible() bool {
+	return g.state == statePlaying
+}
+
 func (g *Game) drawBillboards() {
 	if len(g.modBillboards) == 0 {
 		return
 	}
-	if g.state == stateMainMenu || g.state == stateMapMenu || g.state == stateModsMenu {
+	if !g.billboardsVisible() {
 		return
 	}
 	camPos := g.camera.Position
@@ -550,7 +558,7 @@ func (g *Game) drawBillboardLabels() {
 	if len(g.modBillboards) == 0 {
 		return
 	}
-	if g.state == stateMainMenu || g.state == stateMapMenu || g.state == stateModsMenu {
+	if !g.billboardsVisible() {
 		return
 	}
 	camPos := g.camera.Position
@@ -975,7 +983,7 @@ func (g *Game) findBillboard(id int32, owner string) *ModBillboard {
 func (g *Game) updateBillboardHover() {
 	g.modBillboardHoverPanel = 0
 	g.modBillboardHoverElem = 0
-	if len(g.modBillboards) == 0 {
+	if len(g.modBillboards) == 0 || !g.billboardsVisible() {
 		return
 	}
 	camFwd := g.cameraViewForward()
