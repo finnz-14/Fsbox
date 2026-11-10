@@ -104,13 +104,13 @@ const (
 // ---------------------------------------------------------------------------
 
 const (
-	MouseButtonLeft     = 0
-	MouseButtonRight    = 1
-	MouseButtonMiddle   = 2
-	MouseButtonSide     = 3
-	MouseButtonExtra    = 4
-	MouseButtonForward  = 5
-	MouseButtonBack     = 6
+	MouseButtonLeft    = 0
+	MouseButtonRight   = 1
+	MouseButtonMiddle  = 2
+	MouseButtonSide    = 3
+	MouseButtonExtra   = 4
+	MouseButtonForward = 5
+	MouseButtonBack    = 6
 )
 
 // ---------------------------------------------------------------------------
@@ -201,9 +201,29 @@ func SpawnModelEntity(model int32, pos Vec3, color Color) (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	var h int32
-	_ = json.Unmarshal(raw, &h)
-	return h, nil
+	var e struct {
+		ID int32 `json:"id"`
+	}
+	_ = json.Unmarshal(raw, &e)
+	return e.ID, nil
+}
+
+// SpawnPreset spawns a named content preset (the same list the spawn menu
+// shows) and returns the new entity ID.
+func SpawnPreset(name string, pos Vec3, color Color) (int32, error) {
+	raw, err := Call("entity.spawn", map[string]any{
+		"preset_name": name, "position": pos, "color": color,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var e struct {
+		ID int32 `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &e); err != nil {
+		return 0, err
+	}
+	return e.ID, nil
 }
 
 func SetEntityModel(id, model int32) error {
@@ -347,6 +367,27 @@ func AddBillboardButton(panelID int32, x, y, w, h float32, label string, color C
 	return id, nil
 }
 
+// AddBillboardButtonColored is AddBillboardButton with an explicit label
+// colour. Handy for light buttons on a dark panel.
+func AddBillboardButtonColored(panelID int32, x, y, w, h float32, label string, background, text Color) (int32, error) {
+	return AddBillboardButtonStyled(panelID, x, y, w, h, label, background, text, 0)
+}
+
+// AddBillboardButtonStyled also sets the label's screen-space pixel size. A
+// size of 0 uses the engine default (15px).
+func AddBillboardButtonStyled(panelID int32, x, y, w, h float32, label string, background, text Color, textSize float32) (int32, error) {
+	raw, err := Call("ui.billboard_button", map[string]any{
+		"panel": panelID, "x": x, "y": y, "w": w, "h": h,
+		"label": label, "color": background, "text_color": text, "size": textSize,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var id int32
+	_ = json.Unmarshal(raw, &id)
+	return id, nil
+}
+
 func AddBillboardText(panelID int32, x, y float32, label string, size float32, color Color) (int32, error) {
 	raw, err := Call("ui.billboard_text", map[string]any{
 		"panel": panelID, "x": x, "y": y,
@@ -365,8 +406,64 @@ func RemoveBillboardPanel(panelID int32) error {
 	return err
 }
 
+// MoveBillboardPanel repositions an existing panel in world space. Panels
+// always face the camera, so only the centre position is needed.
+func MoveBillboardPanel(panelID int32, x, y, z float32) error {
+	_, err := Call("ui.billboard_move", map[string]any{
+		"panel": panelID, "x": x, "y": y, "z": z,
+	})
+	return err
+}
+
 func ClearBillboardPanels() error {
 	_, err := Call("ui.billboard_clear", nil)
+	return err
+}
+
+// BillboardElementUpdate describes a partial change to a billboard button or
+// text. Only the non-nil fields are sent, so a zero value cannot accidentally
+// overwrite something.
+type BillboardElementUpdate struct {
+	X         *float32
+	Y         *float32
+	W         *float32
+	H         *float32
+	Label     *string
+	Color     *Color
+	TextColor *Color
+	TextSize  *float32
+}
+
+// UpdateBillboardElement changes an existing button/text in place. Reusing
+// elements (instead of rebuilding the panel) keeps their IDs stable, so click
+// events continue to point at the right row.
+func UpdateBillboardElement(elementID int32, u BillboardElementUpdate) error {
+	args := map[string]any{"element": elementID}
+	if u.X != nil {
+		args["x"] = *u.X
+	}
+	if u.Y != nil {
+		args["y"] = *u.Y
+	}
+	if u.W != nil {
+		args["w"] = *u.W
+	}
+	if u.H != nil {
+		args["h"] = *u.H
+	}
+	if u.Label != nil {
+		args["label"] = *u.Label
+	}
+	if u.Color != nil {
+		args["color"] = *u.Color
+	}
+	if u.TextColor != nil {
+		args["text_color"] = *u.TextColor
+	}
+	if u.TextSize != nil {
+		args["size"] = *u.TextSize
+	}
+	_, err := Call("ui.billboard_update", args)
 	return err
 }
 
@@ -541,14 +638,38 @@ type PlayerInfo struct {
 	Forward  Vec3
 }
 
+// EngineInfo is a small snapshot of the engine state. State is one of
+// "menu", "map_menu", "playing", "paused", "help", "settings", "spawn" or
+// "tools".
+type EngineInfo struct {
+	State     string  `json:"state"`
+	Time      float64 `json:"time"`
+	Frame     int64   `json:"frame"`
+	FPS       int32   `json:"fps"`
+	TimeScale float64 `json:"time_scale"`
+	Paused    bool    `json:"paused"`
+}
+
+func GetEngineInfo() (EngineInfo, error) {
+	raw, err := Call("engine.info", nil)
+	if err != nil {
+		return EngineInfo{}, err
+	}
+	var info EngineInfo
+	if err := json.Unmarshal(raw, &info); err != nil {
+		return EngineInfo{}, err
+	}
+	return info, nil
+}
+
 func GetPlayerInfo() (PlayerInfo, error) {
 	raw, err := Call("player.get", nil)
 	if err != nil {
 		return PlayerInfo{}, err
 	}
 	var pi struct {
-		Position Vec3   `json:"position"`
-		Forward  Vec3   `json:"forward"`
+		Position Vec3 `json:"position"`
+		Forward  Vec3 `json:"forward"`
 	}
 	if err := json.Unmarshal(raw, &pi); err != nil {
 		return PlayerInfo{}, err

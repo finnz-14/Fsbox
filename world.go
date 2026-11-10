@@ -742,6 +742,9 @@ func (g *Game) resetWorld(withStarter bool, spawn box3d.Pos, yaw, pitch float32,
 	g.modParticles = nil
 	g.modProjectiles = nil
 	g.modConstraints = nil
+	// World-space mod UI (billboards) references positions in the old world.
+	// Clear it so a panel cannot outlive the entity/map it belonged to.
+	g.modBillboards = nil
 	g.toasts = nil
 	g.shake = 0
 	g.acc = 0

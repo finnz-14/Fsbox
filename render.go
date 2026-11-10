@@ -100,6 +100,9 @@ func (g *Game) Draw() {
 
 	uiCam := rl.Camera2D{Zoom: g.uiScale()}
 	rl.BeginMode2D(uiCam)
+	// Billboard labels are 2D text, so they must be drawn after the 3D pass.
+	// They sit below the HUD and menus so overlays always win.
+	g.drawBillboardLabels()
 	if g.state != stateMainMenu && g.state != stateMapMenu {
 		g.drawHUD()
 	}

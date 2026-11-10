@@ -20,6 +20,7 @@ func (g *Game) apiSpawnEntity(owner string, cmd string, args json.RawMessage) (a
 	var a struct {
 		Preset      int32    `json:"preset"`
 		PresetName  string   `json:"preset_name"`
+		Model       int32    `json:"model"`
 		Kind        string   `json:"kind"`
 		Position    Vec3Info `json:"position"`
 		Pos         *Vec3Info `json:"pos"`
@@ -68,7 +69,41 @@ func (g *Game) apiSpawnEntity(owner string, cmd string, args json.RawMessage) (a
 	}
 
 	var e *Entity
-	if presetIndex >= 0 {
+	if a.Model != 0 {
+		m, ok := g.modModels[a.Model]
+		if !ok {
+			return nil, fmt.Errorf("model %d not loaded", a.Model)
+		}
+		bb := rl.GetModelBoundingBox(m)
+		half := bv(
+			maxf((bb.Max.X-bb.Min.X)*0.5, 0.05),
+			maxf((bb.Max.Y-bb.Min.Y)*0.5, 0.05),
+			maxf((bb.Max.Z-bb.Min.Z)*0.5, 0.05),
+		)
+		if a.Half != nil {
+			half = a.Half.box()
+		}
+		p := ShapePreset{
+			Name: "ModModel", Category: "MOD", Kind: PropBox,
+			Half: half, Density: 150, Friction: 0.6, Restitution: 0.03,
+			Color: color, Model: m, HasModel: true,
+			Hull: buildModelHull(m), Hulls: buildModelHulls(m),
+			Animations: g.modModelAnims[a.Model],
+		}
+		if a.Name != "" {
+			p.Name = a.Name
+		}
+		if a.Density > 0 {
+			p.Density = a.Density
+		}
+		if a.Friction > 0 {
+			p.Friction = a.Friction
+		}
+		if a.Restitution != 0 {
+			p.Restitution = a.Restitution
+		}
+		e = g.spawnPreset(p, pos.pos(), rot, color)
+	} else if presetIndex >= 0 {
 		e = g.spawnPreset(presets[presetIndex], pos.pos(), rot, color)
 	} else {
 		kind := PropBox

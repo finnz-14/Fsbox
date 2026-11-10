@@ -15,9 +15,6 @@ import (
 
 const ModAPIVersion = "2.0.0"
 
-
-
-
 // ---------------------------------------------------------------------------
 // Public mod API data types
 //
@@ -90,17 +87,17 @@ type PlayerInfo struct {
 }
 
 type EngineInfo struct {
-	Game        string  `json:"game"`
-	Version     string  `json:"version"`
-	APIVersion  string  `json:"api_version"`
-	Time        float64 `json:"time"`
-	Frame       int64   `json:"frame"`
-	FPS         int32   `json:"fps"`
-	State       string  `json:"state"`
-	Paused      bool    `json:"paused"`
-	TimeScale   float64 `json:"time_scale"`
-	EntityCount int     `json:"entity_count"`
-	PropCount   int     `json:"prop_count"`
+	Game        string     `json:"game"`
+	Version     string     `json:"version"`
+	APIVersion  string     `json:"api_version"`
+	Time        float64    `json:"time"`
+	Frame       int64      `json:"frame"`
+	FPS         int32      `json:"fps"`
+	State       string     `json:"state"`
+	Paused      bool       `json:"paused"`
+	TimeScale   float64    `json:"time_scale"`
+	EntityCount int        `json:"entity_count"`
+	PropCount   int        `json:"prop_count"`
 	Player      PlayerInfo `json:"player"`
 }
 
@@ -120,13 +117,13 @@ type PresetInfo struct {
 }
 
 type RaycastInfo struct {
-	Hit      bool     `json:"hit"`
-	EntityID int32    `json:"entity_id"`
+	Hit      bool        `json:"hit"`
+	EntityID int32       `json:"entity_id"`
 	Entity   *EntityInfo `json:"entity,omitempty"`
-	Point    Vec3Info `json:"point"`
-	Normal   Vec3Info `json:"normal"`
-	Fraction float32  `json:"fraction"`
-	Distance float32  `json:"distance"`
+	Point    Vec3Info    `json:"point"`
+	Normal   Vec3Info    `json:"normal"`
+	Fraction float32     `json:"fraction"`
+	Distance float32     `json:"distance"`
 }
 
 type ConstraintInfo struct {
@@ -425,8 +422,8 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		return n, nil
 	case "entity.list":
 		var a struct {
-			Static  bool `json:"static"`
-			Props   bool `json:"props"`
+			Static    bool `json:"static"`
+			Props     bool `json:"props"`
 			Transient bool `json:"transient"`
 		}
 		_ = decodeArgs(args, &a)
@@ -547,7 +544,7 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 			return nil, err
 		}
 		var a struct {
-			Damage float32  `json:"damage"`
+			Damage float32   `json:"damage"`
 			Point  *Vec3Info `json:"point"`
 		}
 		if err := decodeArgs(args, &a); err != nil {
@@ -930,9 +927,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		return true, nil
 	case "player.set_rot":
 		var a struct {
-			Yaw   float32    `json:"yaw"`
-			Pitch float32    `json:"pitch"`
-			Quat  *QuatInfo  `json:"rotation"`
+			Yaw   float32   `json:"yaw"`
+			Pitch float32   `json:"pitch"`
+			Quat  *QuatInfo `json:"rotation"`
 		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
@@ -1075,7 +1072,7 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 	// ----- world ----------------------------------------------------------
 	case "world.set_sun":
 		var a struct {
-			Direction Vec3Info  `json:"direction"`
+			Direction Vec3Info   `json:"direction"`
 			Color     *ColorInfo `json:"color"`
 		}
 		if err := decodeArgs(args, &a); err != nil {
@@ -1159,37 +1156,49 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 
 	// ----- input ----------------------------------------------------------
 	case "input.key_down":
-		var a struct{ Key int32 `json:"key"` }
+		var a struct {
+			Key int32 `json:"key"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
 		return rl.IsKeyDown(a.Key), nil
 	case "input.key_pressed":
-		var a struct{ Key int32 `json:"key"` }
+		var a struct {
+			Key int32 `json:"key"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
 		return rl.IsKeyPressed(a.Key), nil
 	case "input.key_released":
-		var a struct{ Key int32 `json:"key"` }
+		var a struct {
+			Key int32 `json:"key"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
 		return rl.IsKeyReleased(a.Key), nil
 	case "input.mouse_down":
-		var a struct{ Button int32 `json:"button"` }
+		var a struct {
+			Button int32 `json:"button"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
 		return rl.IsMouseButtonDown(rl.MouseButton(a.Button)), nil
 	case "input.mouse_pressed":
-		var a struct{ Button int32 `json:"button"` }
+		var a struct {
+			Button int32 `json:"button"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
 		return rl.IsMouseButtonPressed(rl.MouseButton(a.Button)), nil
 	case "input.mouse_released":
-		var a struct{ Button int32 `json:"button"` }
+		var a struct {
+			Button int32 `json:"button"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1205,7 +1214,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 	case "input.is_focused":
 		return rl.IsWindowFocused(), nil
 	case "input.set_cursor_locked":
-		var a struct{ Locked bool `json:"locked"` }
+		var a struct {
+			Locked bool `json:"locked"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1253,13 +1264,13 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		return true, nil
 	case "ui.draw_rect":
 		var a struct {
-			X       float32   `json:"x"`
-			Y       float32   `json:"y"`
-			W       float32   `json:"w"`
-			H       float32   `json:"h"`
-			Color   ColorInfo `json:"color"`
-			Filled  *bool     `json:"filled"`
-			Thickness float32 `json:"thickness"`
+			X         float32   `json:"x"`
+			Y         float32   `json:"y"`
+			W         float32   `json:"w"`
+			H         float32   `json:"h"`
+			Color     ColorInfo `json:"color"`
+			Filled    *bool     `json:"filled"`
+			Thickness float32   `json:"thickness"`
 		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
@@ -1336,11 +1347,15 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 	case "ui.billboard_add":
 		return g.apiBillboardAdd(owner, args)
 	case "ui.billboard_button":
-		return g.apiBillboardButton(args)
+		return g.apiBillboardButton(owner, args)
 	case "ui.billboard_text":
-		return g.apiBillboardText(args)
+		return g.apiBillboardText(owner, args)
+	case "ui.billboard_move":
+		return g.apiBillboardMove(owner, args)
+	case "ui.billboard_update":
+		return g.apiBillboardUpdate(owner, args)
 	case "ui.billboard_remove":
-		return g.apiBillboardRemove(args)
+		return g.apiBillboardRemove(owner, args)
 	case "ui.billboard_clear":
 		return g.apiBillboardClear(owner, args)
 
@@ -1511,7 +1526,7 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		return g.apiLoadSound(args)
 	case "audio.play_sound":
 		var a struct {
-			Name   string  `json:"name"`
+			Name   string   `json:"name"`
 			Volume *float32 `json:"volume"`
 			Pitch  *float32 `json:"pitch"`
 		}
@@ -1531,7 +1546,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		rl.PlaySound(s)
 		return true, nil
 	case "audio.stop_sound":
-		var a struct{ Name string `json:"name"` }
+		var a struct {
+			Name string `json:"name"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1562,7 +1579,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		rl.PlayMusicStream(m)
 		return true, nil
 	case "audio.stop_music":
-		var a struct{ Name string `json:"name"` }
+		var a struct {
+			Name string `json:"name"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1586,7 +1605,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 	case "audio.is_ready":
 		return rl.IsAudioDeviceReady(), nil
 	case "audio.unload":
-		var a struct{ Name string `json:"name"` }
+		var a struct {
+			Name string `json:"name"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1602,11 +1623,11 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		return true, nil
 	case "audio.play_sound_3d":
 		var a struct {
-			Name       string   `json:"name"`
-			Position   Vec3Info `json:"position"`
-			Volume     *float32 `json:"volume"`
-			Pitch      *float32 `json:"pitch"`
-			MaxDistance float32 `json:"max_distance"`
+			Name        string   `json:"name"`
+			Position    Vec3Info `json:"position"`
+			Volume      *float32 `json:"volume"`
+			Pitch       *float32 `json:"pitch"`
+			MaxDistance float32  `json:"max_distance"`
 		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
@@ -1647,7 +1668,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 	case "weapon.register":
 		return g.apiRegisterWeapon(owner, args)
 	case "weapon.unregister":
-		var a struct{ ID int32 `json:"id"` }
+		var a struct {
+			ID int32 `json:"id"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1659,7 +1682,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		}
 		return out, nil
 	case "weapon.select":
-		var a struct{ ID int32 `json:"id"` }
+		var a struct {
+			ID int32 `json:"id"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1714,7 +1739,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		w.Ammo = int32(clampInt(int(w.Ammo+a.Amount), 0, int(w.MaxAmmo)))
 		return w.Ammo, nil
 	case "weapon.get_ammo":
-		var a struct{ ID int32 `json:"id"` }
+		var a struct {
+			ID int32 `json:"id"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1727,7 +1754,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 	case "tool.register":
 		return g.apiRegisterTool(owner, args)
 	case "tool.unregister":
-		var a struct{ ID int32 `json:"id"` }
+		var a struct {
+			ID int32 `json:"id"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -1739,7 +1768,9 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		}
 		return out, nil
 	case "tool.select":
-		var a struct{ ID int32 `json:"id"` }
+		var a struct {
+			ID int32 `json:"id"`
+		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
 		}
@@ -2050,14 +2081,14 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		out := make([]any, 0, len(e.Animations))
 		for i, anim := range e.Animations {
 			out = append(out, map[string]any{
-				"index":       i,
-				"name":        anim.GetName(),
-				"keyframes":   anim.KeyframeCount,
-				"bones":       anim.BoneCount,
-				"current":     int32(i) == e.AnimCurrent,
-				"playing":     e.AnimPlaying,
-				"frame":       e.AnimFrame,
-				"speed":       e.AnimSpeed,
+				"index":     i,
+				"name":      anim.GetName(),
+				"keyframes": anim.KeyframeCount,
+				"bones":     anim.BoneCount,
+				"current":   int32(i) == e.AnimCurrent,
+				"playing":   e.AnimPlaying,
+				"frame":     e.AnimFrame,
+				"speed":     e.AnimSpeed,
 			})
 		}
 		return out, nil
@@ -2067,10 +2098,10 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 			return nil, err
 		}
 		var a struct {
-			Anim     *string `json:"anim"`
-			AnimIdx  int32   `json:"anim_index"`
-			Speed    *float32 `json:"speed"`
-			Loop     *bool   `json:"loop"`
+			Anim    *string  `json:"anim"`
+			AnimIdx int32    `json:"anim_index"`
+			Speed   *float32 `json:"speed"`
+			Loop    *bool    `json:"loop"`
 		}
 		if err := decodeArgs(args, &a); err != nil {
 			return nil, err
@@ -2161,6 +2192,10 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 func (g *Game) engineInfo() EngineInfo {
 	state := "playing"
 	switch g.state {
+	case stateMainMenu:
+		state = "menu"
+	case stateMapMenu:
+		state = "map_menu"
 	case statePaused:
 		state = "paused"
 	case stateHelp:

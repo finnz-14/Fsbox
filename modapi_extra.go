@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
-)// ---------------------------------------------------------------------------
+) // ---------------------------------------------------------------------------
 // Path safety for config (root-level) file I/O
 // ---------------------------------------------------------------------------
 
@@ -165,7 +165,21 @@ func (g *Game) apiModelLoad(args json.RawMessage) (any, error) {
 	}
 	model := rl.LoadModel(a.Path)
 	if model.MeshCount == 0 && model.MaterialCount == 0 {
+		return nil, fmt.Errorf("model %q has no meshes", a.Path)
 	}
+
+	// Physics colliders are centred on the body origin, but model files are
+	// usually authored with their feet on y=0 or an offset pivot. Move the
+	// model so its bounding-box centre sits on the origin, keeping the mesh
+	// and the generated hulls aligned.
+	bb := rl.GetModelBoundingBox(model)
+	cx := (bb.Min.X + bb.Max.X) * 0.5
+	cy := (bb.Min.Y + bb.Max.Y) * 0.5
+	cz := (bb.Min.Z + bb.Max.Z) * 0.5
+	if absf(cx) > 0.001 || absf(cy) > 0.001 || absf(cz) > 0.001 {
+		model.Transform = rl.MatrixMultiply(rl.MatrixTranslate(-cx, -cy, -cz), model.Transform)
+	}
+
 	anims := rl.LoadModelAnimations(a.Path)
 	g.modModelLast++
 	g.modModels[g.modModelLast] = model
@@ -254,17 +268,17 @@ func (g *Game) apiUIAddElement(owner string, args json.RawMessage) (any, error) 
 	}
 	g.modUIElementLast++
 	el := ModUIElement{
-		ID:     g.modUIElementLast,
-		Kind:   a.Kind,
-		X:      a.X,
-		Y:      a.Y,
-		W:      a.W,
-		H:      a.H,
-		Label:  a.Label,
-		Value:  a.Value,
-		Min:    a.Min,
-		Max:    a.Max,
-		Owner:  owner,
+		ID:    g.modUIElementLast,
+		Kind:  a.Kind,
+		X:     a.X,
+		Y:     a.Y,
+		W:     a.W,
+		H:     a.H,
+		Label: a.Label,
+		Value: a.Value,
+		Min:   a.Min,
+		Max:   a.Max,
+		Owner: owner,
 	}
 	if a.Color.provided() {
 		el.Color = a.Color.rl()
@@ -293,14 +307,14 @@ func (g *Game) apiUIRemoveElement(args json.RawMessage) (any, error) {
 
 func (g *Game) apiUISetElement(args json.RawMessage) (any, error) {
 	var a struct {
-		ID    int32     `json:"id"`
-		X     *float32  `json:"x"`
-		Y     *float32  `json:"y"`
-		W     *float32  `json:"w"`
-		H     *float32  `json:"h"`
-		Label *string   `json:"label"`
+		ID    int32      `json:"id"`
+		X     *float32   `json:"x"`
+		Y     *float32   `json:"y"`
+		W     *float32   `json:"w"`
+		H     *float32   `json:"h"`
+		Label *string    `json:"label"`
 		Color *ColorInfo `json:"color"`
-		Value *float32  `json:"value"`
+		Value *float32   `json:"value"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
@@ -403,6 +417,9 @@ func (g *Game) drawBillboards() {
 	if len(g.modBillboards) == 0 {
 		return
 	}
+	if g.state == stateMainMenu || g.state == stateMapMenu {
+		return
+	}
 	camPos := g.camera.Position
 
 	for _, b := range g.modBillboards {
@@ -447,50 +464,150 @@ func (g *Game) drawBillboards() {
 		rl.DrawTriangle3D(tr, tl, bl, bg)
 		rl.DrawTriangle3D(br, tr, bl, bg)
 
-		rl.DrawLine3D(tl, tr, border)
-		rl.DrawLine3D(tr, br, border)
-		rl.DrawLine3D(br, bl, border)
-		rl.DrawLine3D(bl, tl, border)
+		// Border lines are nudged a hair toward the camera so they do not
+		// z-fight with the panel triangles along the exact same edge.
+		bc := rlv(toCam.X*0.004, toCam.Y*0.004, toCam.Z*0.004)
+		tl2 := rlv(tl.X+bc.X, tl.Y+bc.Y, tl.Z+bc.Z)
+		tr2 := rlv(tr.X+bc.X, tr.Y+bc.Y, tr.Z+bc.Z)
+		br2 := rlv(br.X+bc.X, br.Y+bc.Y, br.Z+bc.Z)
+		bl2 := rlv(bl.X+bc.X, bl.Y+bc.Y, bl.Z+bc.Z)
+		rl.DrawLine3D(tl2, tr2, border)
+		rl.DrawLine3D(tr2, br2, border)
+		rl.DrawLine3D(br2, bl2, border)
+		rl.DrawLine3D(bl2, tl2, border)
 
-		// Draw elements
+		// Draw element quads. Text itself is drawn later in the 2D pass:
+		// raylib's text renderer is a 2D primitive and cannot be used while a
+		// 3D camera is active.
 		for _, el := range b.Elements {
+			if el.Kind != "button" {
+				continue
+			}
 			elX := b.Pos.X + right.X*el.X + up.X*el.Y
 			elY := b.Pos.Y + right.Y*el.X + up.Y*el.Y
 			elZ := b.Pos.Z + right.Z*el.X + up.Z*el.Y
 
-			if el.Kind == "button" {
-				ehw := el.W / 2
-				ehh := el.H / 2
-				btnTL := rlv(elX+right.X*(-ehw)+up.X*(-ehh), elY+right.Y*(-ehw)+up.Y*(-ehh), elZ+right.Z*(-ehw)+up.Z*(-ehh))
-				btnTR := rlv(elX+right.X*(ehw)+up.X*(-ehh), elY+right.Y*(ehw)+up.Y*(-ehh), elZ+right.Z*(ehw)+up.Z*(-ehh))
-				btnBR := rlv(elX+right.X*(ehw)+up.X*(ehh), elY+right.Y*(ehw)+up.Y*(ehh), elZ+right.Z*(ehw)+up.Z*(ehh))
-				btnBL := rlv(elX+right.X*(-ehw)+up.X*(ehh), elY+right.Y*(-ehw)+up.Y*(ehh), elZ+right.Z*(-ehw)+up.Z*(ehh))
+			// Push buttons toward the camera so they never share a plane with
+			// the panel face (that caused the flickering/z-fighting).
+			const faceOffset = 0.02
+			elX += toCam.X * faceOffset
+			elY += toCam.Y * faceOffset
+			elZ += toCam.Z * faceOffset
 
-				btnCol := el.Color
-				if el.Hovered {
-					btnCol = withAlpha(el.Color, 210)
-				}
-				rl.DrawTriangle3D(btnTL, btnTR, btnBR, btnCol)
-				rl.DrawTriangle3D(btnTL, btnBR, btnBL, btnCol)
-				rl.DrawLine3D(btnTL, btnTR, colBorderHi)
-				rl.DrawLine3D(btnTR, btnBR, colBorderHi)
-				rl.DrawLine3D(btnBR, btnBL, colBorderHi)
-				rl.DrawLine3D(btnBL, btnTL, colBorderHi)
+			ehw := el.W / 2
+			ehh := el.H / 2
+			btnTL := rlv(elX+right.X*(-ehw)+up.X*(-ehh), elY+right.Y*(-ehw)+up.Y*(-ehh), elZ+right.Z*(-ehw)+up.Z*(-ehh))
+			btnTR := rlv(elX+right.X*(ehw)+up.X*(-ehh), elY+right.Y*(ehw)+up.Y*(-ehh), elZ+right.Z*(ehw)+up.Z*(-ehh))
+			btnBR := rlv(elX+right.X*(ehw)+up.X*(ehh), elY+right.Y*(ehw)+up.Y*(ehh), elZ+right.Z*(ehw)+up.Z*(ehh))
+			btnBL := rlv(elX+right.X*(-ehw)+up.X*(ehh), elY+right.Y*(-ehw)+up.Y*(ehh), elZ+right.Z*(-ehw)+up.Z*(ehh))
 
-				if el.Label != "" {
-					screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
-					tw := g.textWidth(el.Label, 20)
-					g.drawText(el.Label, screenPos.X-tw/2, screenPos.Y-10, 20, el.TextColor)
-				}
-			} else if el.Kind == "text" {
-				screenPos := rl.GetWorldToScreen(rlv(elX, elY, elZ), g.camera)
-				if el.Label != "" {
-					tw := g.textWidth(el.Label, 28)
-					g.drawText(el.Label, screenPos.X-tw/2, screenPos.Y-14, 28, el.TextColor)
-				}
+			btnCol := el.Color
+			if el.Hovered {
+				btnCol = withAlpha(el.Color, 210)
 			}
+			rl.DrawTriangle3D(btnTL, btnTR, btnBR, btnCol)
+			rl.DrawTriangle3D(btnTL, btnBR, btnBL, btnCol)
+			rl.DrawLine3D(btnTL, btnTR, colBorderHi)
+			rl.DrawLine3D(btnTR, btnBR, colBorderHi)
+			rl.DrawLine3D(btnBR, btnBL, colBorderHi)
+			rl.DrawLine3D(btnBL, btnTL, colBorderHi)
 		}
 	}
+}
+
+// drawBillboardLabels renders billboard element text in the 2D UI pass. Text
+// uses screen-space pixel sizes so it stays readable at any distance, while a
+// cheap physics ray hides labels that are behind walls or props.
+func (g *Game) drawBillboardLabels() {
+	if len(g.modBillboards) == 0 {
+		return
+	}
+	if g.state == stateMainMenu || g.state == stateMapMenu {
+		return
+	}
+	camPos := g.camera.Position
+	camFwd := g.cameraForward()
+	s := g.uiScale()
+	if s <= 0 {
+		s = 1
+	}
+
+	for _, b := range g.modBillboards {
+		toCam := rlv(camPos.X-b.Pos.X, camPos.Y-b.Pos.Y, camPos.Z-b.Pos.Z)
+		dist := lenRl(toCam)
+		if dist < 0.01 {
+			continue
+		}
+		toCam = normRl(toCam)
+		// toCam points from the panel to the camera. The panel is in front of
+		// the camera when the opposite vector agrees with the view direction.
+		if -toCam.X*camFwd.X-toCam.Y*camFwd.Y-toCam.Z*camFwd.Z <= 0.05 {
+			continue
+		}
+
+		worldUp := rlv(0, 1, 0)
+		right := normRl(rlv(
+			worldUp.Y*toCam.Z-worldUp.Z*toCam.Y,
+			worldUp.Z*toCam.X-worldUp.X*toCam.Z,
+			worldUp.X*toCam.Y-worldUp.Y*toCam.X,
+		))
+		if lenRl(right) < 1e-6 {
+			right = rlv(1, 0, 0)
+		}
+		up := normRl(rlv(
+			toCam.Y*right.Z-toCam.Z*right.Y,
+			toCam.Z*right.X-toCam.X*right.Z,
+			toCam.X*right.Y-toCam.Y*right.X,
+		))
+
+		for _, el := range b.Elements {
+			if el.Label == "" {
+				continue
+			}
+			world := rlv(
+				b.Pos.X+right.X*el.X+up.X*el.Y,
+				b.Pos.Y+right.Y*el.X+up.Y*el.Y,
+				b.Pos.Z+right.Z*el.X+up.Z*el.Y,
+			)
+			if !g.billboardPointVisible(world) {
+				continue
+			}
+			sp := rl.GetWorldToScreen(world, g.camera)
+			size := el.TextSize
+			if size <= 0 {
+				size = 15
+			}
+			tw := g.textWidth(el.Label, size)
+			x := sp.X/s - tw*0.5
+			y := sp.Y/s - size*0.5
+			g.drawText(el.Label, x+1, y+1, size, rgba(0, 0, 0, 210))
+			g.drawText(el.Label, x, y, size, el.TextColor)
+		}
+	}
+}
+
+// billboardPointVisible is a single physics ray from the camera to a world
+// point, used to keep billboard labels from showing through solid geometry.
+func (g *Game) billboardPointVisible(p rl.Vector3) bool {
+	if g.world.IsNull() {
+		return true
+	}
+	origin := g.camera.Position
+	dx := p.X - origin.X
+	dy := p.Y - origin.Y
+	dz := p.Z - origin.Z
+	l := float32(math.Sqrt(float64(dx*dx + dy*dy + dz*dz)))
+	if l < 0.01 {
+		return true
+	}
+	dx /= l
+	dy /= l
+	dz /= l
+	res := g.world.CastRayClosest(toBp(origin), bv(dx*l, dy*l, dz*l), queryFilter(catStatic|catProp))
+	if !res.Hit {
+		return true
+	}
+	return float32(res.Fraction)*l >= l-0.2
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +662,16 @@ func (g *Game) raycastBillboard(origin, dir rl.Vector3, maxDist float32) (int32,
 		hitZ := origin.Z + dir.Z*t
 		hit := rlv(hitX, hitY, hitZ)
 
+		// Do not let clicks pass through solid geometry. The panel itself has
+		// no physics body, so any static/prop hit closer than the panel plane
+		// means the panel is occluded.
+		if !g.world.IsNull() {
+			occ := g.world.CastRayClosest(toBp(origin), bv(dir.X*t, dir.Y*t, dir.Z*t), queryFilter(catStatic|catProp))
+			if occ.Hit && float32(occ.Fraction)*t < t-0.15 {
+				continue
+			}
+		}
+
 		toHit := rlv(hit.X-b.Pos.X, hit.Y-b.Pos.Y, hit.Z-b.Pos.Z)
 		localX := toHit.X*right.X + toHit.Y*right.Y + toHit.Z*right.Z
 		localY := toHit.X*up.X + toHit.Y*up.Y + toHit.Z*up.Z
@@ -583,18 +710,18 @@ func (g *Game) raycastBillboard(origin, dir rl.Vector3, maxDist float32) (int32,
 
 func (g *Game) apiBillboardAdd(owner string, args json.RawMessage) (any, error) {
 	var a struct {
-		X float32 `json:"x"`
-		Y float32 `json:"y"`
-		Z float32 `json:"z"`
-		FX float32 `json:"face_x"`
-		FY float32 `json:"face_y"`
-		FZ float32 `json:"face_z"`
-		RX float32 `json:"right_x"`
-		RY float32 `json:"right_y"`
-		RZ float32 `json:"right_z"`
-		UX float32 `json:"up_x"`
-		UY float32 `json:"up_y"`
-		UZ float32 `json:"up_z"`
+		X      float32 `json:"x"`
+		Y      float32 `json:"y"`
+		Z      float32 `json:"z"`
+		FX     float32 `json:"face_x"`
+		FY     float32 `json:"face_y"`
+		FZ     float32 `json:"face_z"`
+		RX     float32 `json:"right_x"`
+		RY     float32 `json:"right_y"`
+		RZ     float32 `json:"right_z"`
+		UX     float32 `json:"up_x"`
+		UY     float32 `json:"up_y"`
+		UZ     float32 `json:"up_z"`
 		Width  float32 `json:"width"`
 		Height float32 `json:"height"`
 	}
@@ -612,33 +739,36 @@ func (g *Game) apiBillboardAdd(owner string, args json.RawMessage) (any, error) 
 	up := normRl(rlv(a.UX, a.UY, a.UZ))
 	g.modBillboardLast++
 	b := &ModBillboard{
-		ID:      g.modBillboardLast,
-		Owner:   owner,
-		Pos:     rlv(a.X, a.Y, a.Z),
-		Face:    face,
-		Right:   right,
-		Up:      up,
-		Width:   a.Width,
-		Height:  a.Height,
+		ID:       g.modBillboardLast,
+		Owner:    owner,
+		Pos:      rlv(a.X, a.Y, a.Z),
+		Face:     face,
+		Right:    right,
+		Up:       up,
+		Width:    a.Width,
+		Height:   a.Height,
 		Elements: []*ModBillboardElement{},
 	}
 	g.modBillboards = append(g.modBillboards, b)
 	return b.ID, nil
 }
 
-func (g *Game) apiBillboardButton(args json.RawMessage) (any, error) {
+func (g *Game) apiBillboardButton(owner string, args json.RawMessage) (any, error) {
 	var a struct {
-		Panel   int32   `json:"panel"`
-		X float32 `json:"x"`
-		Y float32 `json:"y"`
-		W float32 `json:"w"`
-		H float32 `json:"h"`
-		Label   string  `json:"label"`
+		Panel     int32      `json:"panel"`
+		X         float32    `json:"x"`
+		Y         float32    `json:"y"`
+		W         float32    `json:"w"`
+		H         float32    `json:"h"`
+		Label     string     `json:"label"`
+		Color     *ColorInfo `json:"color"`
+		TextColor *ColorInfo `json:"text_color"`
+		Size      float32    `json:"size"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
 	}
-	b := g.findBillboard(a.Panel)
+	b := g.findBillboard(a.Panel, owner)
 	if b == nil {
 		return nil, fmt.Errorf("billboard panel %d not found", a.Panel)
 	}
@@ -648,57 +778,144 @@ func (g *Game) apiBillboardButton(args json.RawMessage) (any, error) {
 	if a.H <= 0 {
 		a.H = 0.05
 	}
+	btnColor := colAccent
+	if a.Color != nil {
+		btnColor = a.Color.rl()
+	}
+	textColor := colText
+	if a.TextColor != nil {
+		textColor = a.TextColor.rl()
+	}
 	g.modBillboardLast++
 	el := &ModBillboardElement{
-		ID:       g.modBillboardLast,
-		Kind:     "button",
-		Label:    a.Label,
-		X:        a.X,
-		Y:        a.Y,
-		W:        a.W,
-		H:        a.H,
-		Color:    colAccent,
-		TextColor: colDark,
-		TextSize: 12,
+		ID:        g.modBillboardLast,
+		Kind:      "button",
+		Label:     a.Label,
+		X:         a.X,
+		Y:         a.Y,
+		W:         a.W,
+		H:         a.H,
+		Color:     btnColor,
+		TextColor: textColor,
+		TextSize:  a.Size,
 	}
 	b.Elements = append(b.Elements, el)
 	return el.ID, nil
 }
 
-func (g *Game) apiBillboardText(args json.RawMessage) (any, error) {
+func (g *Game) apiBillboardText(owner string, args json.RawMessage) (any, error) {
 	var a struct {
-		Panel   int32   `json:"panel"`
-		X float32 `json:"x"`
-		Y float32 `json:"y"`
-		Label   string  `json:"label"`
-		Size    float32 `json:"size"`
+		Panel int32      `json:"panel"`
+		X     float32    `json:"x"`
+		Y     float32    `json:"y"`
+		Label string     `json:"label"`
+		Size  float32    `json:"size"`
+		Color *ColorInfo `json:"color"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
 	}
-	b := g.findBillboard(a.Panel)
+	b := g.findBillboard(a.Panel, owner)
 	if b == nil {
 		return nil, fmt.Errorf("billboard panel %d not found", a.Panel)
 	}
 	if a.Size <= 0 {
-		a.Size = 12
+		a.Size = 22
+	}
+	textColor := colText
+	if a.Color != nil {
+		textColor = a.Color.rl()
 	}
 	g.modBillboardLast++
 	el := &ModBillboardElement{
-		ID:       g.modBillboardLast,
-		Kind:     "text",
-		Label:    a.Label,
-		X:        a.X,
-		Y:        a.Y,
-		Color:    colText,
-		TextColor: colText,
-		TextSize: a.Size,
+		ID:        g.modBillboardLast,
+		Kind:      "text",
+		Label:     a.Label,
+		X:         a.X,
+		Y:         a.Y,
+		Color:     textColor,
+		TextColor: textColor,
+		TextSize:  a.Size,
 	}
 	b.Elements = append(b.Elements, el)
 	return el.ID, nil
 }
 
-func (g *Game) apiBillboardRemove(args json.RawMessage) (any, error) {
+func (g *Game) apiBillboardMove(owner string, args json.RawMessage) (any, error) {
+	var a struct {
+		Panel int32   `json:"panel"`
+		X     float32 `json:"x"`
+		Y     float32 `json:"y"`
+		Z     float32 `json:"z"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return nil, err
+	}
+	b := g.findBillboard(a.Panel, owner)
+	if b == nil {
+		return false, nil
+	}
+	b.Pos = rlv(a.X, a.Y, a.Z)
+	return true, nil
+}
+
+// apiBillboardUpdate changes an existing billboard element in place. Any field
+// left out keeps its current value, so mods can recolour a row or swap its
+// label without rebuilding the whole panel.
+func (g *Game) apiBillboardUpdate(owner string, args json.RawMessage) (any, error) {
+	var a struct {
+		Element   int32      `json:"element"`
+		X         *float32   `json:"x"`
+		Y         *float32   `json:"y"`
+		W         *float32   `json:"w"`
+		H         *float32   `json:"h"`
+		Label     *string    `json:"label"`
+		Color     *ColorInfo `json:"color"`
+		TextColor *ColorInfo `json:"text_color"`
+		Size      *float32   `json:"size"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return nil, err
+	}
+	for _, b := range g.modBillboards {
+		if b.Owner != owner {
+			continue
+		}
+		for _, el := range b.Elements {
+			if el.ID != a.Element {
+				continue
+			}
+			if a.X != nil {
+				el.X = *a.X
+			}
+			if a.Y != nil {
+				el.Y = *a.Y
+			}
+			if a.W != nil {
+				el.W = *a.W
+			}
+			if a.H != nil {
+				el.H = *a.H
+			}
+			if a.Label != nil {
+				el.Label = *a.Label
+			}
+			if a.Color != nil {
+				el.Color = a.Color.rl()
+			}
+			if a.TextColor != nil {
+				el.TextColor = a.TextColor.rl()
+			}
+			if a.Size != nil {
+				el.TextSize = *a.Size
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (g *Game) apiBillboardRemove(owner string, args json.RawMessage) (any, error) {
 	var a struct {
 		Panel int32 `json:"panel"`
 	}
@@ -706,7 +923,7 @@ func (g *Game) apiBillboardRemove(args json.RawMessage) (any, error) {
 		return nil, err
 	}
 	for i, b := range g.modBillboards {
-		if b.ID == a.Panel {
+		if b.ID == a.Panel && b.Owner == owner {
 			g.modBillboards = append(g.modBillboards[:i], g.modBillboards[i+1:]...)
 			return true, nil
 		}
@@ -715,13 +932,19 @@ func (g *Game) apiBillboardRemove(args json.RawMessage) (any, error) {
 }
 
 func (g *Game) apiBillboardClear(owner string, args json.RawMessage) (any, error) {
-	g.modBillboards = nil
+	kept := g.modBillboards[:0]
+	for _, b := range g.modBillboards {
+		if b.Owner != owner {
+			kept = append(kept, b)
+		}
+	}
+	g.modBillboards = kept
 	return true, nil
 }
 
-func (g *Game) findBillboard(id int32) *ModBillboard {
+func (g *Game) findBillboard(id int32, owner string) *ModBillboard {
 	for _, b := range g.modBillboards {
-		if b.ID == id {
+		if b.ID == id && b.Owner == owner {
 			return b
 		}
 	}
@@ -734,7 +957,7 @@ func (g *Game) updateBillboardHover() {
 	}
 	camFwd := g.cameraForward()
 	camPos := g.camera.Position
-	_, elemID := g.raycastBillboard(camPos, camFwd, 10)
+	_, elemID := g.raycastBillboard(camPos, camFwd, 64)
 
 	for _, b := range g.modBillboards {
 		for _, el := range b.Elements {

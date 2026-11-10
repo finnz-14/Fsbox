@@ -261,12 +261,13 @@ func (g *Game) handRaycastBillboard() bool {
 	}
 	camPos := g.camera.Position
 	camFwd := g.cameraForward()
-	panelID, elemID := g.raycastBillboard(camPos, camFwd, 10)
-	if elemID == 0 {
+	panelID, elemID := g.raycastBillboard(camPos, camFwd, 64)
+	if panelID == 0 {
 		return false
 	}
-	// Fire the click event for the billboard element
-	if g.mods != nil {
+	// Aiming at any part of the panel consumes the click, so the entity behind
+	// it can never be grabbed through the interface.
+	if elemID != 0 && g.mods != nil {
 		g.mods.FireEvent("ui.click", map[string]any{"id": elemID, "kind": "billboard_button", "panel": panelID})
 		g.mods.FireEvent("ui.button_click", map[string]any{"id": elemID, "panel": panelID})
 	}

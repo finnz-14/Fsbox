@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
 	"math/rand"
 	"os"
@@ -425,5 +426,83 @@ func TestSaveLoadPreservesFrozenProps(t *testing.T) {
 	g.loadGame()
 	if got := g.frozenCount(); got != wantFrozen {
 		t.Fatalf("load restored %d frozen props, want %d", got, wantFrozen)
+	}
+}
+
+func TestBillboardUpdateOnlyChangesProvidedFields(t *testing.T) {
+	g := &Game{}
+	rowColor := rgba(34, 37, 42, 235)
+	el := &ModBillboardElement{
+		ID: 7, Kind: "button", Label: "old",
+		X: 1, Y: 2, W: 3, H: 4,
+		Color: rowColor, TextColor: colText, TextSize: 18,
+	}
+	g.modBillboards = []*ModBillboard{{ID: 1, Elements: []*ModBillboardElement{el}}}
+
+	ok, err := g.apiBillboardUpdate("", json.RawMessage(`{"element":7,"label":"new","size":24}`))
+	if err != nil || ok != true {
+		t.Fatalf("update returned %v, %v", ok, err)
+	}
+	if el.Label != "new" || el.TextSize != 24 {
+		t.Fatalf("label/size = %q/%v, want new/24", el.Label, el.TextSize)
+	}
+	if el.X != 1 || el.Y != 2 || el.W != 3 || el.H != 4 {
+		t.Fatalf("update changed geometry: %+v", el)
+	}
+	if el.Color != rowColor || el.TextColor != colText {
+		t.Fatalf("update changed colours: %+v", el)
+	}
+
+	ok, err = g.apiBillboardUpdate("", json.RawMessage(`{"element":999,"label":"x"}`))
+	if err != nil || ok != false {
+		t.Fatalf("missing element returned %v, %v", ok, err)
+	}
+}
+
+func TestBillboardRaycastHitsButtonUnderCrosshair(t *testing.T) {
+	g := &Game{}
+	btn := &ModBillboardElement{ID: 11, Kind: "button", X: 0, Y: 0, W: 1, H: 1}
+	g.modBillboards = []*ModBillboard{{
+		ID: 5, Pos: rlv(0, 0, 0), Width: 2, Height: 2,
+		Elements: []*ModBillboardElement{btn},
+	}}
+	g.camera.Position = rlv(0, 0, 5)
+
+	panel, elem := g.raycastBillboard(g.camera.Position, rlv(0, 0, -1), 64)
+	if panel != 5 || elem != 11 {
+		t.Fatalf("raycast hit panel=%d elem=%d, want 5/11", panel, elem)
+	}
+
+	// A ray that misses the panel must not report a hit.
+	panel, elem = g.raycastBillboard(g.camera.Position, rlv(0, 1, 0), 64)
+	if panel != 0 || elem != 0 {
+		t.Fatalf("miss reported panel=%d elem=%d", panel, elem)
+	}
+}
+
+func TestBillboardClearIsOwnerScoped(t *testing.T) {
+	g := &Game{}
+	g.modBillboards = []*ModBillboard{
+		{ID: 1, Owner: "mod.a"},
+		{ID: 2, Owner: "mod.b"},
+		{ID: 3, Owner: "mod.a"},
+	}
+	if _, err := g.apiBillboardClear("mod.a", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.modBillboards) != 1 || g.modBillboards[0].Owner != "mod.b" {
+		t.Fatalf("clear removed the wrong panels: %+v", g.modBillboards)
+	}
+	if _, err := g.apiBillboardRemove("mod.a", json.RawMessage(`{"panel":2}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.modBillboards) != 1 {
+		t.Fatal("a different owner removed the panel")
+	}
+	if _, err := g.apiBillboardRemove("mod.b", json.RawMessage(`{"panel":2}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.modBillboards) != 0 {
+		t.Fatal("owner could not remove its own panel")
 	}
 }

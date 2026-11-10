@@ -24,6 +24,7 @@ func run() int {
 	shot := flag.String("screenshot", "", "screenshot path used by -smoke (default preview.png)")
 	frames := flag.Int("frames", 24, "number of frames to render in -smoke mode")
 	ui := flag.String("ui", "", "optional menu shown in -smoke mode: settings, spawn, tools or help")
+	mapName := flag.String("map", "", "start this map directly instead of showing the main menu")
 	flag.Parse()
 
 	rl.SetTraceLogLevel(rl.LogWarning)
@@ -53,6 +54,12 @@ func run() int {
 
 	g := NewGame()
 	defer g.Close()
+	if *mapName != "" {
+		g.selectedMap = *mapName
+		g.resetWorld(true, defaultSpawn, 0, -0.12, false)
+		g.state = statePlaying
+		g.resumePlaying()
+	}
 	g.applyDisplayMode()
 
 	if g.state == statePlaying {
