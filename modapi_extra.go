@@ -460,7 +460,7 @@ func (g *Game) drawBillboards() {
 	if len(g.modBillboards) == 0 {
 		return
 	}
-	if g.state == stateMainMenu || g.state == stateMapMenu {
+	if g.state == stateMainMenu || g.state == stateMapMenu || g.state == stateModsMenu {
 		return
 	}
 	camPos := g.camera.Position
@@ -550,7 +550,7 @@ func (g *Game) drawBillboardLabels() {
 	if len(g.modBillboards) == 0 {
 		return
 	}
-	if g.state == stateMainMenu || g.state == stateMapMenu {
+	if g.state == stateMainMenu || g.state == stateMapMenu || g.state == stateModsMenu {
 		return
 	}
 	camPos := g.camera.Position
@@ -590,6 +590,24 @@ func (g *Game) drawBillboardLabels() {
 			size := el.TextSize
 			if size <= 0 {
 				size = 15
+			}
+			if el.TextWorld {
+				// TextSize is a world-space height. Project a segment of that
+				// length along the camera up axis at the label position and use
+				// the screen distance as the font's pixel size. This makes text
+				// grow and shrink with the panel as the player approaches.
+				tip := rlv(
+					world.X+up.X*size,
+					world.Y+up.Y*size,
+					world.Z+up.Z*size,
+				)
+				tp := rl.GetWorldToScreen(tip, g.camera)
+				dx := tp.X - sp.X
+				dy := tp.Y - sp.Y
+				size = float32(math.Sqrt(float64(dx*dx+dy*dy))) / s
+				if size < 1 {
+					size = 1
+				}
 			}
 			tw := g.textWidth(el.Label, size)
 			x := sp.X/s - tw*0.5
@@ -759,6 +777,7 @@ func (g *Game) apiBillboardButton(owner string, args json.RawMessage) (any, erro
 		Color     *ColorInfo `json:"color"`
 		TextColor *ColorInfo `json:"text_color"`
 		Size      float32    `json:"size"`
+		World     bool       `json:"world"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
@@ -793,6 +812,7 @@ func (g *Game) apiBillboardButton(owner string, args json.RawMessage) (any, erro
 		Color:     btnColor,
 		TextColor: textColor,
 		TextSize:  a.Size,
+		TextWorld: a.World,
 	}
 	b.Elements = append(b.Elements, el)
 	return el.ID, nil
@@ -806,6 +826,7 @@ func (g *Game) apiBillboardText(owner string, args json.RawMessage) (any, error)
 		Label string     `json:"label"`
 		Size  float32    `json:"size"`
 		Color *ColorInfo `json:"color"`
+		World bool       `json:"world"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
@@ -831,6 +852,7 @@ func (g *Game) apiBillboardText(owner string, args json.RawMessage) (any, error)
 		Color:     textColor,
 		TextColor: textColor,
 		TextSize:  a.Size,
+		TextWorld: a.World,
 	}
 	b.Elements = append(b.Elements, el)
 	return el.ID, nil
@@ -868,6 +890,7 @@ func (g *Game) apiBillboardUpdate(owner string, args json.RawMessage) (any, erro
 		Color     *ColorInfo `json:"color"`
 		TextColor *ColorInfo `json:"text_color"`
 		Size      *float32   `json:"size"`
+		World     *bool      `json:"world"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
@@ -903,6 +926,9 @@ func (g *Game) apiBillboardUpdate(owner string, args json.RawMessage) (any, erro
 			}
 			if a.Size != nil {
 				el.TextSize = *a.Size
+			}
+			if a.World != nil {
+				el.TextWorld = *a.World
 			}
 			return true, nil
 		}

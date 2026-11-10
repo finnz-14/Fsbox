@@ -526,6 +526,7 @@ func (g *Game) drawSpawnMenu() {
 	h := g.uiHeight()
 	rl.DrawRectangle(0, 0, int32(w), int32(h), rgba(4, 5, 6, 215))
 
+	g.ensurePreviewThumbCache()
 	rec := g.spawnMenuPanel()
 	g.panel(rec, colPanelDeep, colBorderHi)
 	g.drawSpawnRail()
@@ -716,7 +717,16 @@ func (g *Game) drawSpawnGrid() {
 		case spawnTabProps:
 			p := presets[card.Index]
 			g.drawTextSpaced(presetCategoryName(p), card.Rec.X+8, card.Rec.Y+7, 8.5, 0.8, withAlpha(colMuted, 175))
-			g.drawPresetPreview(p, card.Rec.X+card.Rec.Width*0.5, card.Rec.Y+card.Rec.Height*0.44, card.Rec.Height*0.46, 255)
+			thumb := rl.Rectangle{
+				X:      card.Rec.X + 8,
+				Y:      card.Rec.Y + 18,
+				Width:  card.Rec.Width - 16,
+				Height: card.Rec.Height - 38,
+			}
+			if thumb.Height < 12 {
+				thumb.Height = 12
+			}
+			g.drawPresetThumbnail(card.Index, thumb)
 			g.textCenteredSpaced(strings.ToUpper(p.Name), card.Rec.X+card.Rec.Width*0.5, card.Rec.Y+card.Rec.Height-20, 10, 1.0, withAlpha(colText, 225))
 		case spawnTabTools:
 			d := toolDefs[card.Index]
@@ -744,8 +754,8 @@ func (g *Game) drawSpawnDetail() {
 		x := well.X + float32(i+1)*well.Width/5
 		rl.DrawLineEx(rl2(x, well.Y+well.Height-8), rl2(x, well.Y+well.Height), 1, withAlpha(colMuted, 38))
 	}
-	if g.spawnTab == spawnTabProps && presets[g.selected].HasModel {
-		g.drawModelPreview(presets[g.selected], well)
+	if g.spawnTab == spawnTabProps {
+		g.drawPresetPreview3D(presets[g.selected], well)
 	}
 	rl.DrawRectangleLinesEx(well, 1, colBorder)
 	g.drawCornerMarks(well, withAlpha(colAccent, 130))
@@ -758,9 +768,6 @@ func (g *Game) drawSpawnDetail() {
 	case spawnTabProps:
 		p := presets[g.selected]
 		accent = p.Color
-		if !p.HasModel {
-			g.drawPresetPreview(p, well.X+well.Width*0.5, well.Y+well.Height*0.5, 82, 255)
-		}
 		title = strings.ToUpper(p.Name)
 		subtitle = presetCategoryName(p) + " / " + strings.ToUpper(p.Kind.String())
 
@@ -823,12 +830,99 @@ func (g *Game) drawSpawnDetail() {
 const (
 	modelPreviewW = 520
 	modelPreviewH = 250
+	thumbPreviewW = 256
+	thumbPreviewH = 192
 )
 
-// drawModelPreview renders a content model into an offscreen texture and blits
-// it into the inspection well. Drawing the model straight to the window would
-// project it onto the centre of the screen, far outside the well rectangle.
-func (g *Game) drawModelPreview(p ShapePreset, well rl.Rectangle) {
+// previewSignature identifies the current preset list so cached thumbnails are
+// thrown away if a mod adds or removes spawnables.
+func previewSignature() string {
+	var b strings.Builder
+	for i := range presets {
+		p := presets[i]
+		b.WriteString(p.Name)
+		b.WriteByte('|')
+		b.WriteString(p.Category)
+		b.WriteByte('|')
+		if p.HasModel {
+			b.WriteByte('m')
+		}
+		b.WriteByte(';')
+	}
+	return b.String()
+}
+
+func (g *Game) ensurePreviewThumbCache() {
+	sig := previewSignature()
+	if sig == g.previewThumbSig && g.previewThumbs != nil {
+		return
+	}
+	for i, rt := range g.previewThumbs {
+		if rt.ID != 0 {
+			rl.UnloadRenderTexture(rt)
+		}
+		delete(g.previewThumbs, i)
+	}
+	g.previewThumbs = make(map[int]rl.RenderTexture2D)
+	g.previewThumbSig = sig
+}
+
+// presetThumbnail returns the cached 3D thumbnail for a spawnable, rendering it
+// once on first use. Thumbnails are static, so caching keeps the spawn grid
+// cheap even with many content packs.
+func (g *Game) presetThumbnail(index int) rl.RenderTexture2D {
+	if index < 0 || index >= len(presets) {
+		return rl.RenderTexture2D{}
+	}
+	if g.previewThumbs == nil {
+		g.previewThumbs = make(map[int]rl.RenderTexture2D)
+	}
+	if rt, ok := g.previewThumbs[index]; ok && rt.ID != 0 {
+		return rt
+	}
+	rt := rl.LoadRenderTexture(thumbPreviewW, thumbPreviewH)
+	if rt.ID == 0 {
+		return rt
+	}
+	rl.SetTextureFilter(rt.Texture, rl.FilterBilinear)
+	g.renderPresetPreview(presets[index], rt)
+	g.previewThumbs[index] = rt
+	return rt
+}
+
+func (g *Game) drawPresetThumbnail(index int, dest rl.Rectangle) {
+	rt := g.presetThumbnail(index)
+	if rt.ID == 0 {
+		p := presets[index]
+		g.drawPresetPreview(p, dest.X+dest.Width*0.5, dest.Y+dest.Height*0.5, minf(dest.Width, dest.Height), 255)
+		return
+	}
+	g.drawRenderTextureFit(rt, dest)
+}
+
+func (g *Game) drawRenderTextureFit(rt rl.RenderTexture2D, dest rl.Rectangle) {
+	tw := float32(rt.Texture.Width)
+	th := float32(rt.Texture.Height)
+	if tw <= 0 || th <= 0 {
+		return
+	}
+	scale := minf(dest.Width/tw, dest.Height/th)
+	w := tw * scale
+	h := th * scale
+	r := rl.Rectangle{
+		X:      dest.X + (dest.Width-w)*0.5,
+		Y:      dest.Y + (dest.Height-h)*0.5,
+		Width:  w,
+		Height: h,
+	}
+	// Render textures are stored bottom-up; flip the source rectangle.
+	src := rl.Rectangle{X: 0, Y: 0, Width: tw, Height: -th}
+	rl.DrawTexturePro(rt.Texture, src, r, rl2(0, 0), 0, rl.White)
+}
+
+// drawPresetPreview3D renders the selected preset into the shared inspection
+// texture and blits it into the well.
+func (g *Game) drawPresetPreview3D(p ShapePreset, well rl.Rectangle) {
 	if g.modelPreview.ID == 0 {
 		g.modelPreview = rl.LoadRenderTexture(modelPreviewW, modelPreviewH)
 		if g.modelPreview.ID == 0 {
@@ -836,8 +930,14 @@ func (g *Game) drawModelPreview(p ShapePreset, well rl.Rectangle) {
 		}
 		rl.SetTextureFilter(g.modelPreview.Texture, rl.FilterBilinear)
 	}
-	rt := g.modelPreview
+	g.renderPresetPreview(p, g.modelPreview)
+	g.drawRenderTextureFit(g.modelPreview, well)
+}
 
+// renderPresetPreview draws a preset into an offscreen texture with the same
+// framing used by the inspection well. Models and primitive presets share the
+// path so every spawnable gets a real 3D thumbnail.
+func (g *Game) renderPresetPreview(p ShapePreset, rt rl.RenderTexture2D) {
 	// Leave 2D mode so the projection push/pop stays balanced; BeginTextureMode
 	// overwrites the projection and EndTextureMode does not restore it.
 	rl.EndMode2D()
@@ -846,10 +946,7 @@ func (g *Game) drawModelPreview(p ShapePreset, well rl.Rectangle) {
 
 	// Frame the model from its bounding box so packs authored at wildly
 	// different scales still fill the well sensibly.
-	r := float32(math.Sqrt(float64(p.Half.X*p.Half.X + p.Half.Y*p.Half.Y + p.Half.Z*p.Half.Z)))
-	if r < 0.2 {
-		r = 0.2
-	}
+	r := presetFrameRadius(p)
 	dir := rlv(0.55, 0.24, 1.0)
 	dl := float32(math.Sqrt(float64(dir.X*dir.X + dir.Y*dir.Y + dir.Z*dir.Z)))
 	dist := r * 3.1
@@ -862,17 +959,54 @@ func (g *Game) drawModelPreview(p ShapePreset, well rl.Rectangle) {
 	}
 	rl.BeginMode3D(cam)
 	rl.DisableBackfaceCulling()
-	rl.DrawModelEx(p.Model, rlv(0, 0, 0), rlv(0, 1, 0), 0, rlv(1, 1, 1), rl.White)
+	if p.HasModel {
+		rl.DrawModelEx(p.Model, rlv(0, 0, 0), rlv(0, 1, 0), 0, rlv(1, 1, 1), rl.White)
+	} else {
+		drawPresetMesh3D(p)
+	}
 	rl.EnableBackfaceCulling()
 	rl.EndMode3D()
 	rl.EndTextureMode()
 
 	// BeginTextureMode replaces the 2D projection, so restore the UI camera.
 	rl.BeginMode2D(rl.Camera2D{Zoom: g.uiScale()})
+}
 
-	// Render textures are stored bottom-up; flip the source rectangle.
-	src := rl.Rectangle{X: 0, Y: 0, Width: float32(rt.Texture.Width), Height: -float32(rt.Texture.Height)}
-	rl.DrawTexturePro(rt.Texture, src, well, rl2(0, 0), 0, rl.White)
+func presetFrameRadius(p ShapePreset) float32 {
+	var r float32
+	switch p.Kind {
+	case PropSphere:
+		r = p.Radius
+	case PropCylinder:
+		r = float32(math.Sqrt(float64(p.Radius*p.Radius + p.Height*p.Height*0.25)))
+	default:
+		r = float32(math.Sqrt(float64(p.Half.X*p.Half.X + p.Half.Y*p.Half.Y + p.Half.Z*p.Half.Z)))
+	}
+	if r < 0.2 {
+		r = 0.2
+	}
+	return r
+}
+
+func drawPresetMesh3D(p ShapePreset) {
+	edge := withAlpha(rgb(8, 9, 10), 200)
+	hi := withAlpha(rgb(255, 255, 255), 45)
+	switch p.Kind {
+	case PropSphere:
+		rl.DrawSphere(rlv(0, 0, 0), p.Radius, p.Color)
+		rl.DrawSphereWires(rlv(0, 0, 0), p.Radius*1.005, 8, 16, edge)
+		rl.DrawSphere(rlv(-p.Radius*0.35, p.Radius*0.35, -p.Radius*0.25), p.Radius*0.22, hi)
+	case PropCylinder:
+		h := p.Height
+		base := rlv(0, -h*0.5, 0)
+		rl.DrawCylinder(base, p.Radius, p.Radius, h, 24, p.Color)
+		rl.DrawCylinderWires(base, p.Radius, p.Radius, h, 24, edge)
+		rl.DrawSphere(rlv(-p.Radius*0.3, h*0.2, -p.Radius*0.25), maxf(0.02, p.Radius*0.18), hi)
+	default:
+		size := rlv(p.Half.X*2, p.Half.Y*2, p.Half.Z*2)
+		rl.DrawCubeV(rlv(0, 0, 0), size, p.Color)
+		rl.DrawCubeWiresV(rlv(0, 0, 0), size, edge)
+	}
 }
 
 func (g *Game) drawSpawnFooter() {

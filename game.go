@@ -34,6 +34,7 @@ const (
 	stateSpawn
 	stateToolMenu
 	stateMapMenu
+	stateModsMenu
 )
 
 // toolKeys maps the 1-7 row to the tool gun modes.
@@ -121,7 +122,15 @@ type Game struct {
 	// modelPreview is the offscreen target used by the spawn menu to draw a 3D
 	// content model inside the inspection well.
 	modelPreview rl.RenderTexture2D
-	mods         *ModManager
+
+	// previewThumbs caches one 3D render texture per spawnable so the spawn
+	// grid can show the same viewport used by the inspection well instead of a
+	// flat procedural icon. previewThumbSig invalidates the cache when the
+	// preset list changes (for example after a mod adds content).
+	previewThumbs   map[int]rl.RenderTexture2D
+	previewThumbSig string
+
+	mods *ModManager
 
 	cube rl.Model
 	font rl.Font
@@ -151,6 +160,7 @@ type Game struct {
 	spawnCat string
 
 	selectedMap   string
+	modsScroll    int
 	spawnSearch   string
 	searchActive  bool
 	menuToolSel   ToolID
@@ -405,6 +415,10 @@ type ModBillboardElement struct {
 	Color     rl.Color
 	TextColor rl.Color
 	TextSize  float32
+	// TextWorld treats TextSize as a world-space height instead of screen
+	// pixels. The text then grows and shrinks with the panel as the player
+	// moves closer or farther away.
+	TextWorld bool
 	Hovered   bool
 }
 
@@ -522,6 +536,13 @@ func (g *Game) Close() {
 		rl.UnloadRenderTexture(g.modelPreview)
 		g.modelPreview.ID = 0
 	}
+	for i, rt := range g.previewThumbs {
+		if rt.ID != 0 {
+			rl.UnloadRenderTexture(rt)
+		}
+		delete(g.previewThumbs, i)
+	}
+	g.previewThumbSig = ""
 	if g.mods != nil {
 		g.mods.Close()
 		g.mods = nil
@@ -675,6 +696,8 @@ func (g *Game) updateUIInput() {
 			}
 		case stateToolMenu:
 			g.closeToolMenu()
+		case stateModsMenu:
+			g.state = stateMainMenu
 		}
 	}
 	if rl.IsKeyPressed(rl.KeyF1) || rl.IsKeyPressed(rl.KeyH) {
@@ -769,6 +792,8 @@ func (g *Game) updateUIInput() {
 		g.updateSpawnMenuInput()
 	case stateToolMenu:
 		g.updateToolMenuInput()
+	case stateModsMenu:
+		g.updateModsMenuInput()
 	}
 }
 
@@ -971,8 +996,25 @@ func (g *Game) uiScale() float32 {
 	return s
 }
 
-func (g *Game) uiWidth() float32  { return 1280 }
-func (g *Game) uiHeight() float32 { return 720 }
+// uiWidth/uiHeight report the logical UI size after uiScale is applied. Using
+// the window size instead of a fixed 1280x720 design box means full-screen
+// overlays always reach the real edges, with no uncovered strip at the bottom
+// on non-16:9 windows.
+func (g *Game) uiWidth() float32 {
+	s := g.uiScale()
+	if s <= 0 {
+		s = 1
+	}
+	return float32(rl.GetScreenWidth()) / s
+}
+
+func (g *Game) uiHeight() float32 {
+	s := g.uiScale()
+	if s <= 0 {
+		s = 1
+	}
+	return float32(rl.GetScreenHeight()) / s
+}
 
 // uiMouse returns the mouse position in the scaled UI coordinate space.
 func (g *Game) uiMouse() rl.Vector2 {

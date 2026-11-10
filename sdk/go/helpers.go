@@ -374,7 +374,8 @@ func AddBillboardButtonColored(panelID int32, x, y, w, h float32, label string, 
 }
 
 // AddBillboardButtonStyled also sets the label's screen-space pixel size. A
-// size of 0 uses the engine default (15px).
+// size of 0 uses the engine default (15px). Use AddBillboardButtonWorld when
+// the label should scale with distance instead.
 func AddBillboardButtonStyled(panelID int32, x, y, w, h float32, label string, background, text Color, textSize float32) (int32, error) {
 	raw, err := Call("ui.billboard_button", map[string]any{
 		"panel": panelID, "x": x, "y": y, "w": w, "h": h,
@@ -388,10 +389,41 @@ func AddBillboardButtonStyled(panelID int32, x, y, w, h float32, label string, b
 	return id, nil
 }
 
+// AddBillboardButtonWorld is AddBillboardButtonStyled with a world-space label
+// height. The text grows and shrinks with the panel as the player moves.
+func AddBillboardButtonWorld(panelID int32, x, y, w, h float32, label string, background, text Color, worldHeight float32) (int32, error) {
+	raw, err := Call("ui.billboard_button", map[string]any{
+		"panel": panelID, "x": x, "y": y, "w": w, "h": h,
+		"label": label, "color": background, "text_color": text,
+		"size": worldHeight, "world": true,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var id int32
+	_ = json.Unmarshal(raw, &id)
+	return id, nil
+}
+
 func AddBillboardText(panelID int32, x, y float32, label string, size float32, color Color) (int32, error) {
 	raw, err := Call("ui.billboard_text", map[string]any{
 		"panel": panelID, "x": x, "y": y,
 		"label": label, "size": size, "color": color,
+	})
+	if err != nil {
+		return 0, err
+	}
+	var id int32
+	_ = json.Unmarshal(raw, &id)
+	return id, nil
+}
+
+// AddBillboardTextWorld creates text whose size is a world-space height, so it
+// scales with the panel as the player moves closer or farther away.
+func AddBillboardTextWorld(panelID int32, x, y float32, label string, worldHeight float32, color Color) (int32, error) {
+	raw, err := Call("ui.billboard_text", map[string]any{
+		"panel": panelID, "x": x, "y": y,
+		"label": label, "size": worldHeight, "color": color, "world": true,
 	})
 	if err != nil {
 		return 0, err
@@ -432,6 +464,9 @@ type BillboardElementUpdate struct {
 	Color     *Color
 	TextColor *Color
 	TextSize  *float32
+	// WorldSize switches the label size between screen pixels (false) and
+	// world-space height (true).
+	WorldSize *bool
 }
 
 // UpdateBillboardElement changes an existing button/text in place. Reusing
@@ -462,6 +497,9 @@ func UpdateBillboardElement(elementID int32, u BillboardElementUpdate) error {
 	}
 	if u.TextSize != nil {
 		args["size"] = *u.TextSize
+	}
+	if u.WorldSize != nil {
+		args["world"] = *u.WorldSize
 	}
 	_, err := Call("ui.billboard_update", args)
 	return err

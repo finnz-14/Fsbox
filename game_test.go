@@ -522,6 +522,32 @@ func TestBillboardBasisUsesCameraAxes(t *testing.T) {
 	}
 }
 
+func TestBillboardTextWorldFlag(t *testing.T) {
+	g := &Game{}
+	g.modBillboards = []*ModBillboard{{
+		ID: 3, Owner: "mod.a", Elements: []*ModBillboardElement{},
+	}}
+	raw, err := g.apiBillboardText("mod.a", json.RawMessage(`{"panel":3,"label":"TITLE","size":0.25,"world":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, ok := raw.(int32)
+	if !ok {
+		t.Fatalf("text id returned %T", raw)
+	}
+	el := g.modBillboards[0].Elements[0]
+	if !el.TextWorld || el.TextSize != 0.25 {
+		t.Fatalf("world text = %v size=%v, want true/0.25", el.TextWorld, el.TextSize)
+	}
+
+	if _, err := g.apiBillboardUpdate("mod.a", json.RawMessage(`{"element":`+itoa(int(id))+`,"world":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	if el.TextWorld {
+		t.Fatal("update did not switch world sizing off")
+	}
+}
+
 func TestBillboardHoverCommandReportsStoredHit(t *testing.T) {
 	g := &Game{modBillboardHoverPanel: 4, modBillboardHoverElem: 12}
 	raw, err := g.ModCall("mod.a", "ui.billboard_hover", nil)

@@ -104,6 +104,9 @@ func runSmoke(g *Game, shot string, frames int, ui string) bool {
 		g.openSpawnMenu()
 	case "tools":
 		g.openToolMenu()
+	case "mods":
+		g.modsScroll = 0
+		g.state = stateModsMenu
 	case "help":
 		g.state = stateHelp
 	}

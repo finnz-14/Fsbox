@@ -18,7 +18,7 @@ func (g *Game) Draw() {
 
 	if g.hasShadow && g.settings.Shadows {
 		d := normRl(g.sunDir)
-	g.sunCam.Position = rlv(d.X*40, d.Y*40, d.Z*40)
+		g.sunCam.Position = rlv(d.X*40, d.Y*40, d.Z*40)
 		g.sunCam.Target = rlv(0, 0, 0)
 		g.sunCam.Up = rlv(0, 1, 0)
 		g.sunCam.Fovy = 80
@@ -103,7 +103,7 @@ func (g *Game) Draw() {
 	// Billboard labels are 2D text, so they must be drawn after the 3D pass.
 	// They sit below the HUD and menus so overlays always win.
 	g.drawBillboardLabels()
-	if g.state != stateMainMenu && g.state != stateMapMenu {
+	if g.state != stateMainMenu && g.state != stateMapMenu && g.state != stateModsMenu {
 		g.drawHUD()
 	}
 	switch g.state {
@@ -111,6 +111,8 @@ func (g *Game) Draw() {
 		g.drawMainMenu()
 	case stateMapMenu:
 		g.drawMapMenu()
+	case stateModsMenu:
+		g.drawModsMenu()
 	case stateHelp:
 		g.drawHelp()
 	case statePaused:

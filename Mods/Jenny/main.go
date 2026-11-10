@@ -267,15 +267,15 @@ func buildPanel() {
 	}
 	panelID = panel
 
-	_, _ = fsbox.AddBillboardText(panelID, 0, 1.30, "JENNY", 30, colAccent)
-	_, _ = fsbox.AddBillboardText(panelID, 0, 1.10, "ANIMATION BROWSER", 14, colMuted)
+	_, _ = fsbox.AddBillboardTextWorld(panelID, 0, 1.30, "JENNY", 0.24, colAccent)
+	_, _ = fsbox.AddBillboardTextWorld(panelID, 0, 1.10, "ANIMATION BROWSER", 0.11, colMuted)
 
-	statusID, _ = fsbox.AddBillboardText(panelID, 0, -0.96, "AIM AT LIST + WHEEL TO SCROLL  |  SELECT THEN PLAY", 14, colMuted)
+	statusID, _ = fsbox.AddBillboardTextWorld(panelID, 0, -0.96, "AIM AT LIST + WHEEL TO SCROLL  |  SELECT THEN PLAY", 0.09, colMuted)
 
 	for i := 0; i < rowCount; i++ {
 		y := firstRowY - float32(i)*rowSpacing
-		id, err := fsbox.AddBillboardButtonStyled(
-			panelID, 0, y, 3.8, rowHeight, "", colRow, colText, 18,
+		id, err := fsbox.AddBillboardButtonWorld(
+			panelID, 0, y, 3.8, rowHeight, "", colRow, colText, 0.11,
 		)
 		if err != nil {
 			fsbox.Log("[Jenny] add row failed: " + err.Error())
@@ -284,11 +284,11 @@ func buildPanel() {
 		rowIDs = append(rowIDs, id)
 	}
 
-	playBtnID, _ = fsbox.AddBillboardButtonStyled(
-		panelID, -1.0, -1.24, 1.6, 0.30, "PLAY", colPlay, colText, 18,
+	playBtnID, _ = fsbox.AddBillboardButtonWorld(
+		panelID, -1.0, -1.24, 1.6, 0.30, "PLAY", colPlay, colText, 0.13,
 	)
-	stopBtnID, _ = fsbox.AddBillboardButtonStyled(
-		panelID, 1.0, -1.24, 1.6, 0.30, "STOP", colStop, colText, 18,
+	stopBtnID, _ = fsbox.AddBillboardButtonWorld(
+		panelID, 1.0, -1.24, 1.6, 0.30, "STOP", colStop, colText, 0.13,
 	)
 
 	refreshRows()
