@@ -548,7 +548,7 @@ func (g *Game) Update(dt float64) {
 	g.updateToolAnimation(float32(dt))
 	g.fireInputEvents()
 	g.updateUIElements()
-	g.updateBillboardHover(g.uiMouse())
+	g.updateBillboardHover()
 	if g.state == stateMainMenu {
 		g.updateMainMenuInput()
 	}

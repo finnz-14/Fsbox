@@ -104,13 +104,13 @@ const (
 // ---------------------------------------------------------------------------
 
 const (
-	MouseButtonLeft      = 0
-	MouseButtonRight     = 1
-	MouseButtonMiddle    = 2
-	MouseButtonSide      = 3
-	MouseButtonExtra     = 4
-	MouseButtonForward   = 5
-	MouseButtonBack      = 6
+	MouseButtonLeft     = 0
+	MouseButtonRight    = 1
+	MouseButtonMiddle   = 2
+	MouseButtonSide     = 3
+	MouseButtonExtra    = 4
+	MouseButtonForward  = 5
+	MouseButtonBack     = 6
 )
 
 // ---------------------------------------------------------------------------
@@ -201,11 +201,9 @@ func SpawnModelEntity(model int32, pos Vec3, color Color) (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	var info struct {
-		ID int32 `json:"id"`
-	}
-	_ = json.Unmarshal(raw, &info)
-	return info.ID, nil
+	var h int32
+	_ = json.Unmarshal(raw, &h)
+	return h, nil
 }
 
 func SetEntityModel(id, model int32) error {
@@ -323,7 +321,7 @@ func SetUIElement(id int32, x, y, w, h *float32, label *string, color *Color, va
 func AddBillboardPanel(x, y, z, width, height float32) (int32, error) {
 	raw, err := Call("ui.billboard_add", map[string]any{
 		"x": x, "y": y, "z": z,
-		"face_x": 0, "face_y": 0, "face_z": 0, // engine auto-faces camera
+		"face_x": 0, "face_y": 0, "face_z": 0,
 		"right_x": 0, "right_y": 0, "right_z": 0,
 		"up_x": 0, "up_y": 0, "up_z": 0,
 		"width": width, "height": height,
@@ -370,147 +368,6 @@ func RemoveBillboardPanel(panelID int32) error {
 func ClearBillboardPanels() error {
 	_, err := Call("ui.billboard_clear", nil)
 	return err
-}
-
-
-// ---------------------------------------------------------------------------
-// Camera
-// ---------------------------------------------------------------------------
-
-func SetCameraMode(mode int32) error {
-	_, err := Call("camera.set_mode", map[string]any{"mode": mode})
-	return err
-}
-
-func SetCameraDistance(d float32) error {
-	_, err := Call("camera.set_distance", map[string]any{"distance": d})
-	return err
-}
-
-func SetCameraOffset(o Vec3) error {
-	_, err := Call("camera.set_offset", map[string]any{"offset": o})
-	return err
-}
-
-// WorldToScreen converts a 3D world position to 2D screen coordinates.
-func WorldToScreen(pos Vec3) (Vec3, error) {
-	raw, err := Call("render.world_to_screen", map[string]any{"position": pos})
-	if err != nil {
-		return Vec3{}, err
-	}
-	var v Vec3
-	_ = json.Unmarshal(raw, &v)
-	return v, nil
-}
-
-// ---------------------------------------------------------------------------
-// Cursor
-// ---------------------------------------------------------------------------
-
-func SetCursorLocked(locked bool) error {
-	_, err := Call("input.set_cursor_locked", map[string]any{"locked": locked})
-	return err
-}
-
-// InputKeyPressed queries whether a key was pressed this frame.
-func InputKeyPressed(key int32) (bool, error) {
-	raw, err := Call("input.key_pressed", map[string]any{"key": key})
-	if err != nil {
-		return false, err
-	}
-	var b bool
-	_ = json.Unmarshal(raw, &b)
-	return b, nil
-}
-
-// InputKeyDown queries whether a key is currently held down.
-func InputKeyDown(key int32) (bool, error) {
-	raw, err := Call("input.key_down", map[string]any{"key": key})
-	if err != nil {
-		return false, err
-	}
-	var b bool
-	_ = json.Unmarshal(raw, &b)
-	return b, nil
-}
-
-// InputKeyReleased queries whether a key was released this frame.
-func InputKeyReleased(key int32) (bool, error) {
-	raw, err := Call("input.key_released", map[string]any{"key": key})
-	if err != nil {
-		return false, err
-	}
-	var b bool
-	_ = json.Unmarshal(raw, &b)
-	return b, nil
-}
-
-// InputWheel returns the mouse wheel scroll amount.
-func InputWheel() (float32, error) {
-	raw, err := Call("input.wheel", nil)
-	if err != nil {
-		return 0, err
-	}
-	var v float32
-	_ = json.Unmarshal(raw, &v)
-	return v, nil
-}
-
-// InputMouseButtonPressed queries whether a mouse button was pressed this frame.
-func InputMouseButtonPressed(button int32) (bool, error) {
-	raw, err := Call("input.mouse_pressed", map[string]any{"button": button})
-	if err != nil {
-		return false, err
-	}
-	var b bool
-	_ = json.Unmarshal(raw, &b)
-	return b, nil
-}
-
-// InputMouseButtonDown queries whether a mouse button is currently held down.
-func InputMouseButtonDown(button int32) (bool, error) {
-	raw, err := Call("input.mouse_down", map[string]any{"button": button})
-	if err != nil {
-		return false, err
-	}
-	var b bool
-	_ = json.Unmarshal(raw, &b)
-	return b, nil
-}
-
-// InputMouseButtonReleased queries whether a mouse button was released this frame.
-func InputMouseButtonReleased(button int32) (bool, error) {
-	raw, err := Call("input.mouse_released", map[string]any{"button": button})
-	if err != nil {
-		return false, err
-	}
-	var b bool
-	_ = json.Unmarshal(raw, &b)
-	return b, nil
-}
-
-// ---------------------------------------------------------------------------
-// Player info (for mods to detect proximity themselves)
-// ---------------------------------------------------------------------------
-
-type PlayerInfo struct {
-	Position Vec3
-	Forward  Vec3
-}
-
-func GetPlayerInfo() (PlayerInfo, error) {
-	raw, err := Call("player.get", nil)
-	if err != nil {
-		return PlayerInfo{}, err
-	}
-	var pi struct {
-		Position Vec3   `json:"position"`
-		Forward  Vec3   `json:"forward"`
-	}
-	if err := json.Unmarshal(raw, &pi); err != nil {
-		return PlayerInfo{}, err
-	}
-	return PlayerInfo{Position: pi.Position, Forward: pi.Forward}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -568,7 +425,86 @@ func AudioReady() (bool, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Animations
+// Keyboard input
+// ---------------------------------------------------------------------------
+
+func InputKeyPressed(key int32) (bool, error) {
+	raw, err := Call("input.key_pressed", map[string]any{"key": key})
+	if err != nil {
+		return false, err
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b, nil
+}
+
+func InputKeyDown(key int32) (bool, error) {
+	raw, err := Call("input.key_down", map[string]any{"key": key})
+	if err != nil {
+		return false, err
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b, nil
+}
+
+func InputKeyReleased(key int32) (bool, error) {
+	raw, err := Call("input.key_released", map[string]any{"key": key})
+	if err != nil {
+		return false, err
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b, nil
+}
+
+// ---------------------------------------------------------------------------
+// Mouse input
+// ---------------------------------------------------------------------------
+
+func InputMouseButtonPressed(button int32) (bool, error) {
+	raw, err := Call("input.mouse_pressed", map[string]any{"button": button})
+	if err != nil {
+		return false, err
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b, nil
+}
+
+func InputMouseButtonDown(button int32) (bool, error) {
+	raw, err := Call("input.mouse_down", map[string]any{"button": button})
+	if err != nil {
+		return false, err
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b, nil
+}
+
+func InputMouseButtonReleased(button int32) (bool, error) {
+	raw, err := Call("input.mouse_released", map[string]any{"button": button})
+	if err != nil {
+		return false, err
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b, nil
+}
+
+// InputWheel returns the mouse wheel scroll amount.
+func InputWheel() (float32, error) {
+	raw, err := Call("input.wheel", nil)
+	if err != nil {
+		return 0, err
+	}
+	var v float32
+	_ = json.Unmarshal(raw, &v)
+	return v, nil
+}
+
+// ---------------------------------------------------------------------------
+// Player info (for mods to detect proximity themselves)
 // ---------------------------------------------------------------------------
 
 type AnimationInfo struct {
@@ -582,15 +518,42 @@ type AnimationInfo struct {
 	Speed     float32
 }
 
-// EntityInfo is returned by GetEntity.
 type EntityInfo struct {
-	ID           int32  `json:"id"`
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	Position     Vec3   `json:"position"`
-	Health       float32 `json:"health"`
-	MaxHealth    float32 `json:"max_health"`
-	Frozen       bool   `json:"frozen"`
+	ID           int32
+	Name         string
+	Kind         string
+	Static       bool
+	Frozen       bool
+	Invulnerable bool
+	Transient    bool
+	Health       float32
+	MaxHealth    float32
+	Position     Vec3
+	Color        Color
+	Half         Vec3
+	Radius       float32
+	Height       float32
+	Owner        string
+}
+
+type PlayerInfo struct {
+	Position Vec3
+	Forward  Vec3
+}
+
+func GetPlayerInfo() (PlayerInfo, error) {
+	raw, err := Call("player.get", nil)
+	if err != nil {
+		return PlayerInfo{}, err
+	}
+	var pi struct {
+		Position Vec3   `json:"position"`
+		Forward  Vec3   `json:"forward"`
+	}
+	if err := json.Unmarshal(raw, &pi); err != nil {
+		return PlayerInfo{}, err
+	}
+	return PlayerInfo{Position: pi.Position, Forward: pi.Forward}, nil
 }
 
 func GetEntity(id int32) (EntityInfo, error) {
@@ -611,19 +574,17 @@ func GetAnimations(id int32) ([]AnimationInfo, error) {
 		return nil, err
 	}
 	var out []AnimationInfo
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, err
-	}
+	_ = json.Unmarshal(raw, &out)
 	return out, nil
-}
-
-func PlayAnimation(id int32, animName string, speed float32) error {
-	_, err := Call("entity.play_animation", map[string]any{"id": id, "anim": animName, "speed": speed})
-	return err
 }
 
 func PlayAnimationByIndex(id, animIndex int32, speed float32) error {
 	_, err := Call("entity.play_animation", map[string]any{"id": id, "anim_index": animIndex, "speed": speed})
+	return err
+}
+
+func StopAnimation(id int32) error {
+	_, err := Call("entity.stop_animation", map[string]any{"id": id})
 	return err
 }
 
@@ -637,26 +598,7 @@ func ResumeAnimation(id int32) error {
 	return err
 }
 
-func StopAnimation(id int32) error {
-	_, err := Call("entity.stop_animation", map[string]any{"id": id})
-	return err
-}
-
 func SetAnimationSpeed(id int32, speed float32) error {
 	_, err := Call("entity.set_animation_speed", map[string]any{"id": id, "speed": speed})
-	return err
-}
-
-// ---------------------------------------------------------------------------
-// Player model
-// ---------------------------------------------------------------------------
-
-func SetPlayerModel(h int32) error {
-	_, err := Call("player.set_model", map[string]any{"model": h})
-	return err
-}
-
-func ClearPlayerModel() error {
-	_, err := Call("player.clear_model", nil)
 	return err
 }

@@ -85,12 +85,12 @@ func init() {
 
 				if dist < 15.0 && dot > 0.2 && !guiOpen {
 					guiOpen = true
-					fsbox.SetCursorLocked(false)
 					fsbox.Toast("Jenny GUI - use hand tool to click", fsbox.Color{R: 230, G: 166, B: 66, A: 255})
-					buildBillboard(jennyPos)
+					if ent2, err := fsbox.GetEntity(jennyEntity); err == nil {
+						buildBillboard(ent2.Position)
+					}
 				} else if (dist > 16.0 || dot < 0.1) && guiOpen {
 					guiOpen = false
-					fsbox.SetCursorLocked(true)
 					fsbox.ClearBillboardPanels()
 					panelID = 0
 					btnIDs = nil
@@ -109,7 +109,6 @@ func init() {
 					buildBillboard(ent.Position)
 				}
 			} else {
-				fsbox.SetCursorLocked(true)
 				fsbox.ClearBillboardPanels()
 				panelID = 0
 				btnIDs = nil
@@ -176,7 +175,7 @@ func buildBillboard(jennyPos fsbox.Vec3) {
 	panelID = panel
 
 	// Title at top of panel (centered).
-	fsbox.AddBillboardText(panelID, 0, 0.85, "Jenny", 0.45, fsbox.Color{R: 230, G: 166, B: 66, A: 255})
+	fsbox.AddBillboardText(panelID, -0.8, 0.85, "Jenny", 0.5, fsbox.Color{R: 230, G: 166, B: 66, A: 255})
 
 	// Animation buttons - vertical list on left side of panel.
 	btnIDs = nil
@@ -206,7 +205,7 @@ func buildBillboard(jennyPos fsbox.Vec3) {
 	playBtnID = playBtn
 
 	// Stop button bottom right.
-	stopBtn, err := fsbox.AddBillboardButton(panelID, 0.9, -0.75, 0.7, 0.08, "STOP", fsbox.Color{R: 160, G: 60, B: 60, A: 230})
+	stopBtn, err := fsbox.AddBillboardButton(panelID, 0.9, -0.8, 0.7, 0.08, "STOP", fsbox.Color{R: 160, G: 60, B: 60, A: 230})
 	if err != nil {
 		fsbox.Log("[Jenny] add stop button failed: " + err.Error())
 	}
