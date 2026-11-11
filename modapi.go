@@ -2159,14 +2159,20 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 			sd.BaseMaterial.Restitution = e.Restitution
 			sd.Filter = propFilter()
 
-			// Prefer the cheap primitive proxies.
+			// Prefer the cheap primitive proxies. Bones flagged UseHull get
+			// an exact hull shape instead.
 			colliders := buildBoneColliders(e.Skeletal)
-			usedColliders, colliderShapes := createSkeletalColliderShapes(e.Body, &sd, colliders, m)
-			if len(colliderShapes) > 0 {
-				e.SkeletalColliders = usedColliders
-				e.SkeletalColliderShapes = colliderShapes
-			} else {
-				// Hull fallback.
+			primColliders, primShapes, hullBones, hullShapes := createSkeletalColliderShapes(e.Body, &sd, colliders, m, e.Skeletal)
+			if len(primShapes) > 0 {
+				e.SkeletalColliders = primColliders
+				e.SkeletalColliderShapes = primShapes
+			}
+			if len(hullShapes) > 0 {
+				e.Skeletal = append(e.Skeletal, hullBones...)
+				e.SkeletalShapes = append(e.SkeletalShapes, hullShapes...)
+			}
+			if len(primShapes) == 0 && len(hullShapes) == 0 {
+				// Hull fallback: nothing could be fitted, cook every bone hull.
 				var used []BoneHull
 				for _, bh := range e.Skeletal {
 					pts := make([]box3d.Vec3, len(bh.Points))

@@ -103,6 +103,7 @@ func TestSkeletalMotionLocks(t *testing.T) {
 // TestSkeletalPrimitiveColliders verifies the fast path: bind-pose hulls are
 // fitted to capsule/sphere proxies, those proxies are attached to the body,
 // and the body stays upright while they are moved by the animation pose.
+// Boxy bones are flagged UseHull and get exact hull shapes instead.
 func TestSkeletalPrimitiveColliders(t *testing.T) {
 	t.Chdir(t.TempDir())
 
@@ -124,8 +125,13 @@ func TestSkeletalPrimitiveColliders(t *testing.T) {
 	if len(e.SkeletalColliderShapes) != len(e.SkeletalColliders) {
 		t.Fatalf("collider/shape mismatch: %d/%d", len(e.SkeletalColliders), len(e.SkeletalColliderShapes))
 	}
-	if len(e.SkeletalShapes) != 0 {
-		t.Fatalf("primitive path should not create hull shapes, got %d", len(e.SkeletalShapes))
+	// Hybrid: elongated bone gets a primitive, boxy bones get hulls.
+	totalShapes := len(e.SkeletalColliderShapes) + len(e.SkeletalShapes)
+	t.Logf("primitives=%d hulls=%d total=%d colliders=%d skeletal=%d",
+		len(e.SkeletalColliderShapes), len(e.SkeletalShapes), totalShapes,
+		len(e.SkeletalColliders), len(e.Skeletal))
+	if totalShapes != len(hulls) {
+		t.Fatalf("shape count %d doesn't match hull count %d", totalShapes, len(hulls))
 	}
 
 	e.Body.SetGravityScale(1)

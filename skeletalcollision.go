@@ -19,9 +19,12 @@ func setBoneMatricesIdentity(m rl.Model) {
 	}
 }
 
-// buildBoneColliders fits one cheap sphere/capsule proxy to each bind-pose
-// bone hull. The fit runs once when content is loaded; runtime only moves the
-// proxy, which avoids re-cooking convex hulls every animation frame.
+// buildBoneColliders fits one collision proxy to each bind-pose bone hull.
+// Elongated bones (limbs) get cheap capsules; compact bones (heads, hands)
+// get spheres; boxy bones (torsos) that don't fit a primitive well are
+// flagged UseHull so they keep an exact convex-hull shape.
+// The fit runs once when content is loaded; runtime only moves the proxy,
+// which avoids re-cooking convex hulls every animation frame.
 func buildBoneColliders(hulls []BoneHull) []BoneCollider {
 	out := make([]BoneCollider, 0, len(hulls))
 	for _, bh := range hulls {
@@ -36,7 +39,10 @@ func buildBoneColliders(hulls []BoneHull) []BoneCollider {
 }
 
 // fitBoneCollider returns a capsule when the point cloud is elongated and a
-// sphere when it is compact. Points are in raw model space.
+// sphere when it is compact. Boxy clouds (where a primitive would include
+// large empty regions) are flagged UseHull so the exact hull is used instead.
+// Points are in raw model space. No padding is added: the primitive tightly
+// bounds the vertices it was fit to.
 func fitBoneCollider(pts []box3d.Vec3) (BoneCollider, bool) {
 	if len(pts) < 4 {
 		return BoneCollider{}, false
@@ -95,17 +101,27 @@ func fitBoneCollider(pts []box3d.Vec3) (BoneCollider, bool) {
 		if sphereR < 0.01 {
 			return BoneCollider{}, false
 		}
+		// If the sphere is much larger than the point cloud's AABB, a hull
+		// fits the geometry more tightly (e.g. a boxy torso fit as a sphere
+		// includes rounded empty corners).
+		maxDim := maxf(upper.X-lower.X, maxf(upper.Y-lower.Y, upper.Z-lower.Z))
+		useHull := sphereR > maxDim*0.65
 		return BoneCollider{
-			Sphere: true,
-			Center: centroid,
-			Radius: sphereR + 0.005,
+			Sphere:  true,
+			Center:  centroid,
+			Radius:  sphereR,
+			UseHull: useHull,
 		}, true
 	}
 
+	// Elongated cloud -> capsule. If the capsule is fat relative to its
+	// length, it likely includes empty space around boxy geometry (e.g. a
+	// torso capsule extends past the box corners); use a hull instead.
 	if radius < 0.008 {
 		radius = 0.008
 	}
-	return BoneCollider{A: a, B: b, Radius: radius + 0.005}, true
+	useHull := halfLen > 0 && radius > halfLen*0.6
+	return BoneCollider{A: a, B: b, Radius: radius, UseHull: useHull}, true
 }
 
 // principalAxis returns the dominant eigenvector of the point cloud's
@@ -201,22 +217,33 @@ func matrixMaxScale(m rl.Matrix) float32 {
 	return maxf(sx, maxf(sy, sz))
 }
 
-// createSkeletalColliderShapes attaches primitive shapes for one entity. The
-// returned collider slice is entity-owned so runtime caches never leak back
-// into the shared spawn preset.
-func createSkeletalColliderShapes(body box3d.BodyID, sd *box3d.ShapeDef, colliders []BoneCollider, model rl.Model) ([]BoneCollider, []box3d.ShapeID) {
-	if len(colliders) == 0 {
-		return nil, nil
-	}
+// createSkeletalColliderShapes attaches collision shapes for one entity.
+// Primitive colliders (sphere/capsule) are created for well-fitting bones;
+// hull shapes are created for boxy bones flagged UseHull. Both shape sets can
+// coexist on the same body. The returned collider slice is entity-owned so
+// runtime caches never leak back into the shared spawn preset.
+func createSkeletalColliderShapes(body box3d.BodyID, sd *box3d.ShapeDef, colliders []BoneCollider, model rl.Model, hulls []BoneHull) ([]BoneCollider, []box3d.ShapeID, []BoneHull, []box3d.ShapeID) {
 	modelScale := matrixMaxScale(model.Transform)
-	used := make([]BoneCollider, 0, len(colliders))
-	shapes := make([]box3d.ShapeID, 0, len(colliders))
+	primColliders := make([]BoneCollider, 0, len(colliders))
+	primShapes := make([]box3d.ShapeID, 0, len(colliders))
+	hullBones := make([]BoneHull, 0, len(hulls))
+	hullShapes := make([]box3d.ShapeID, 0, len(hulls))
+
+	hullByBone := make(map[int32]BoneHull, len(hulls))
+	for _, bh := range hulls {
+		hullByBone[bh.Bone] = bh
+	}
+
 	for _, c := range colliders {
 		c.lastA = box3d.Vec3{}
 		c.lastB = box3d.Vec3{}
 		c.lastC = box3d.Vec3{}
 		c.lastR = 0
 		c.hasLast = false
+
+		if c.UseHull {
+			continue // handled below via hull path
+		}
 
 		var sid box3d.ShapeID
 		if c.Sphere {
@@ -232,10 +259,37 @@ func createSkeletalColliderShapes(body box3d.BodyID, sd *box3d.ShapeDef, collide
 		if sid.IsNull() {
 			continue
 		}
-		used = append(used, c)
-		shapes = append(shapes, sid)
+		primColliders = append(primColliders, c)
+		primShapes = append(primShapes, sid)
 	}
-	return used, shapes
+
+	// Hull fallback for bones where a primitive would include empty space.
+	for _, c := range colliders {
+		if !c.UseHull {
+			continue
+		}
+		bh, ok := hullByBone[c.Bone]
+		if !ok {
+			continue
+		}
+		pts := make([]box3d.Vec3, len(bh.Points))
+		for j, v := range bh.Points {
+			mv := rl.Vector3Transform(rl.Vector3{X: v.X, Y: v.Y, Z: v.Z}, model.Transform)
+			pts[j] = box3d.Vec3{X: mv.X, Y: mv.Y, Z: mv.Z}
+		}
+		hull := createLeafHull(pts, 40)
+		if hull == nil {
+			continue
+		}
+		sid := body.CreateHullShape(sd, hull)
+		if sid.IsNull() {
+			continue
+		}
+		hullBones = append(hullBones, bh)
+		hullShapes = append(hullShapes, sid)
+	}
+
+	return primColliders, primShapes, hullBones, hullShapes
 }
 
 // updateSkeletalCollisions updates every skeletal entity. The game normally
@@ -255,16 +309,14 @@ func (g *Game) updateSkeletalCollisions() {
 }
 
 // updateSkeletalCollisionForEntity moves one entity's collision proxies to the
-// pose that was just applied to its model. Primitive colliders are preferred;
-// hull re-cooking remains as a fallback for models that cannot be fitted.
+// pose that was just applied to its model. Primitive colliders are updated
+// cheaply (SetSphere/SetCapsule); hull bones are re-cooked per frame but only
+// for the few bones where primitives fit poorly.
 func (g *Game) updateSkeletalCollisionForEntity(e *Entity, force bool) {
 	if e == nil || !e.HasModel || e.Body.IsNull() {
 		return
 	}
-	if len(e.SkeletalColliders) > 0 && len(e.SkeletalColliderShapes) == len(e.SkeletalColliders) {
-		g.updatePrimitiveColliders(e, force)
-		return
-	}
+	g.updatePrimitiveColliders(e, force)
 	g.updateHullColliders(e, force)
 }
 
@@ -286,6 +338,9 @@ func (g *Game) updatePrimitiveColliders(e *Entity, force bool) {
 
 	for i := range e.SkeletalColliders {
 		c := &e.SkeletalColliders[i]
+		if c.UseHull {
+			continue
+		}
 		shape := e.SkeletalColliderShapes[i]
 		if shape.IsNull() {
 			continue

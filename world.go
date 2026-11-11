@@ -332,13 +332,18 @@ type BoneHull struct {
 // hull cook happens once when the model loads instead of every animation frame.
 //
 // A collider is either a sphere (Sphere == true) or a capsule between A and B.
+// When UseHull is true, the primitive fit was too loose (e.g. a boxy torso
+// fit as a capsule would include empty rounded corners) and the exact convex
+// hull is used instead. Hull bones are re-cooked per frame but only for the
+// few bones where primitives fit poorly.
 type BoneCollider struct {
-	Bone   int32
-	Sphere bool
-	Center box3d.Vec3 // sphere centre, raw model space
-	A      box3d.Vec3 // capsule start, raw model space
-	B      box3d.Vec3 // capsule end, raw model space
-	Radius float32
+	Bone    int32
+	Sphere  bool
+	Center  box3d.Vec3 // sphere centre, raw model space
+	A       box3d.Vec3 // capsule start, raw model space
+	B       box3d.Vec3 // capsule end, raw model space
+	Radius  float32
+	UseHull bool // true when the exact hull should be used instead of this primitive
 
 	// Runtime cache used to skip shape updates when the pose barely changed.
 	lastA   box3d.Vec3
@@ -693,12 +698,14 @@ func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, hal
 
 	// Prefer cheap capsule/sphere proxies. They are fitted once from the bind
 	// pose and only their transform changes at runtime, so animation no longer
-	// triggers a per-frame convex hull cook.
-	usedColliders, colliderShapes := createSkeletalColliderShapes(body, &sd, colliders, model)
+	// triggers a per-frame convex hull cook. Bones flagged UseHull get an
+	// exact convex-hull shape instead (re-cooked per frame, but only for the
+	// few bones where a primitive would include empty space).
+	primColliders, primShapes, hullBones, hullShapes := createSkeletalColliderShapes(body, &sd, colliders, model, skeletal)
 
 	var shapes []box3d.ShapeID
 	var used []BoneHull
-	if len(colliderShapes) == 0 {
+	if len(hullShapes) == 0 && len(primShapes) == 0 {
 		// Hull fallback for models whose geometry could not be fitted with
 		// primitives (or old content that only supplies BoneHull data).
 		for _, bh := range skeletal {
@@ -721,7 +728,7 @@ func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, hal
 			used = append(used, bh)
 		}
 	}
-	if len(colliderShapes) == 0 && len(shapes) == 0 {
+	if len(hullShapes) == 0 && len(primShapes) == 0 && len(shapes) == 0 {
 		h := box3d.MakeBoxHull(half.X, half.Y, half.Z)
 		body.CreateHullShape(&sd, &h.Base)
 		// No per-bone shapes to drive; keep the lists empty so the skeletal
@@ -736,8 +743,8 @@ func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, hal
 		Density: density, Friction: friction, Restitution: restitution,
 		SpawnedAt: g.time,
 		Model:     model, HasModel: hasModel,
-		Skeletal: used, SkeletalShapes: shapes,
-		SkeletalColliders: usedColliders, SkeletalColliderShapes: colliderShapes,
+		Skeletal: append(used, hullBones...), SkeletalShapes: append(shapes, hullShapes...),
+		SkeletalColliders: primColliders, SkeletalColliderShapes: primShapes,
 	}
 	g.registerEntity(e)
 	return e
