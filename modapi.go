@@ -652,6 +652,61 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		e.Body.SetGravityScale(a.Scale)
 		e.Body.SetAwake(true)
 		return true, nil
+	case "entity.get_motion_locks":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		if e == nil {
+			return MotionLocksInfo{}, nil
+		}
+		locks := e.Body.GetMotionLocks()
+		return MotionLocksInfo{
+			LinearX:  locks.LinearX,
+			LinearY:  locks.LinearY,
+			LinearZ:  locks.LinearZ,
+			AngularX: locks.AngularX,
+			AngularY: locks.AngularY,
+			AngularZ: locks.AngularZ,
+		}, nil
+	case "entity.set_motion_locks":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		var a struct {
+			AngularX bool `json:"angular_x"`
+			AngularY bool `json:"angular_y"`
+			AngularZ bool `json:"angular_z"`
+			LinearX  bool `json:"linear_x"`
+			LinearY  bool `json:"linear_y"`
+			LinearZ  bool `json:"linear_z"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		if e == nil {
+			return false, nil
+		}
+		e.Body.SetMotionLocks(box3d.MotionLocks{
+			LinearX:  a.LinearX,
+			LinearY:  a.LinearY,
+			LinearZ:  a.LinearZ,
+			AngularX: a.AngularX,
+			AngularY: a.AngularY,
+			AngularZ: a.AngularZ,
+		})
+		e.Body.SetAwake(true)
+		// Return the locks for verification.
+		locks := e.Body.GetMotionLocks()
+		return MotionLocksInfo{
+			LinearX:  locks.LinearX,
+			LinearY:  locks.LinearY,
+			LinearZ:  locks.LinearZ,
+			AngularX: locks.AngularX,
+			AngularY: locks.AngularY,
+			AngularZ: locks.AngularZ,
+		}, nil
 	case "entity.set_material":
 		e, err := g.entityFromArgs(args)
 		if err != nil {
@@ -2071,7 +2126,49 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		}
 		e.Model = m
 		e.HasModel = true
+		e.Skeletal = buildBoneHulls(m)
 		e.Animations = g.modModelAnims[a.Model]
+		// Rebuild skeletal collision shapes if the entity already has them.
+		if len(e.SkeletalShapes) > 0 {
+			// Destroy old shapes.
+			for _, sid := range e.SkeletalShapes {
+				if !sid.IsNull() {
+					sid.Destroy(false)
+				}
+			}
+			e.SkeletalShapes = nil
+			// Create new shapes from the new skeletal hulls.
+			sd := box3d.DefaultShapeDef()
+			sd.Density = e.Density
+			if sd.Density <= 0 {
+				sd.Density = 150
+			}
+			sd.BaseMaterial = box3d.DefaultSurfaceMaterial()
+			sd.BaseMaterial.Friction = e.Friction
+			sd.BaseMaterial.Restitution = e.Restitution
+			sd.Filter = propFilter()
+			var used []BoneHull
+			for _, bh := range e.Skeletal {
+				// Transform to centered space for bind pose.
+				pts := make([]box3d.Vec3, len(bh.Points))
+				for j, v := range bh.Points {
+					mv := rl.Vector3Transform(rl.Vector3{X: v.X, Y: v.Y, Z: v.Z}, m.Transform)
+					pts[j] = box3d.Vec3{X: mv.X, Y: mv.Y, Z: mv.Z}
+				}
+				hull := createLeafHull(pts, 40)
+				if hull == nil {
+					continue
+				}
+				sid := e.Body.CreateHullShape(&sd, hull)
+				if sid.IsNull() {
+					continue
+				}
+				// Keep hulls and shapes aligned by index.
+				e.SkeletalShapes = append(e.SkeletalShapes, sid)
+				used = append(used, bh)
+			}
+			e.Skeletal = used
+		}
 		e.AnimCurrent = 0
 		e.AnimFrame = 0
 		e.AnimPlaying = false
@@ -2194,6 +2291,22 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		e.AnimPlaying = false
 		e.AnimFrame = 0
 		e.AnimActive = false
+		return true, nil
+	case "entity.set_animation_frame":
+		e, err := g.entityFromArgs(args)
+		if err != nil {
+			return nil, err
+		}
+		var a struct {
+			Frame float32 `json:"frame"`
+		}
+		if err := decodeArgs(args, &a); err != nil {
+			return nil, err
+		}
+		if e == nil || len(e.Animations) == 0 {
+			return false, nil
+		}
+		e.AnimFrame = a.Frame
 		return true, nil
 	}
 	return nil, fmt.Errorf("unknown command %q", cmd)

@@ -18,28 +18,28 @@ import (
 
 func (g *Game) apiSpawnEntity(owner string, cmd string, args json.RawMessage) (any, error) {
 	var a struct {
-		Preset      int32    `json:"preset"`
-		PresetName  string   `json:"preset_name"`
-		Model       int32    `json:"model"`
-		Kind        string   `json:"kind"`
-		Position    Vec3Info `json:"position"`
-		Pos         *Vec3Info `json:"pos"`
-		Rotation    *QuatInfo `json:"rotation"`
-		Yaw         float32  `json:"yaw"`
-		Pitch       float32  `json:"pitch"`
-		Roll        float32  `json:"roll"`
+		Preset      int32      `json:"preset"`
+		PresetName  string     `json:"preset_name"`
+		Model       int32      `json:"model"`
+		Kind        string     `json:"kind"`
+		Position    Vec3Info   `json:"position"`
+		Pos         *Vec3Info  `json:"pos"`
+		Rotation    *QuatInfo  `json:"rotation"`
+		Yaw         float32    `json:"yaw"`
+		Pitch       float32    `json:"pitch"`
+		Roll        float32    `json:"roll"`
 		Color       *ColorInfo `json:"color"`
-		Half        *Vec3Info `json:"half"`
-		Radius      float32  `json:"radius"`
-		Height      float32  `json:"height"`
-		Density     float32  `json:"density"`
-		Friction    float32  `json:"friction"`
-		Restitution float32  `json:"restitution"`
-		Name        string   `json:"name"`
-		Static      bool     `json:"static"`
-		Health      float32  `json:"health"`
-		MaxHealth   float32  `json:"max_health"`
-		Owner       string   `json:"owner"`
+		Half        *Vec3Info  `json:"half"`
+		Radius      float32    `json:"radius"`
+		Height      float32    `json:"height"`
+		Density     float32    `json:"density"`
+		Friction    float32    `json:"friction"`
+		Restitution float32    `json:"restitution"`
+		Name        string     `json:"name"`
+		Static      bool       `json:"static"`
+		Health      float32    `json:"health"`
+		MaxHealth   float32    `json:"max_health"`
+		Owner       string     `json:"owner"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func (g *Game) apiSpawnEntity(owner string, cmd string, args json.RawMessage) (a
 			Name: "ModModel", Category: "MOD", Kind: PropBox,
 			Half: half, Density: 150, Friction: 0.6, Restitution: 0.03,
 			Color: color, Model: m, HasModel: true,
-			Hull: buildModelHull(m), Hulls: buildModelHulls(m),
+			Hull: buildModelHull(m), Hulls: buildModelHulls(m), Skeletal: buildBoneHulls(m),
 			Animations: g.modModelAnims[a.Model],
 		}
 		if a.Name != "" {
@@ -246,12 +246,12 @@ func (g *Game) apiEntitySetTransform(args json.RawMessage) (any, error) {
 		return false, nil
 	}
 	var a struct {
-		Position *Vec3Info `json:"position"`
-		Pos      *Vec3Info `json:"pos"`
-		X        float32   `json:"x"`
-		Y        float32   `json:"y"`
-		Z        float32   `json:"z"`
-		Rotation *QuatInfo `json:"rotation"`
+		Position         *Vec3Info `json:"position"`
+		Pos              *Vec3Info `json:"pos"`
+		X                float32   `json:"x"`
+		Y                float32   `json:"y"`
+		Z                float32   `json:"z"`
+		Rotation         *QuatInfo `json:"rotation"`
 		Yaw, Pitch, Roll float32
 	}
 	if err := decodeArgs(args, &a); err != nil {
@@ -281,15 +281,15 @@ func (g *Game) apiEntityPhysics(cmd string, args json.RawMessage) (any, error) {
 		return false, nil
 	}
 	var a struct {
-		FX float32 `json:"fx"`
-		FY float32 `json:"fy"`
-		FZ float32 `json:"fz"`
-		IX float32 `json:"ix"`
-		IY float32 `json:"iy"`
-		IZ float32 `json:"iz"`
-		TX float32 `json:"tx"`
-		TY float32 `json:"ty"`
-		TZ float32 `json:"tz"`
+		FX    float32   `json:"fx"`
+		FY    float32   `json:"fy"`
+		FZ    float32   `json:"fz"`
+		IX    float32   `json:"ix"`
+		IY    float32   `json:"iy"`
+		IZ    float32   `json:"iz"`
+		TX    float32   `json:"tx"`
+		TY    float32   `json:"ty"`
+		TZ    float32   `json:"tz"`
 		Point *Vec3Info `json:"point"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
@@ -386,31 +386,31 @@ func applyMaterial(e *Entity, density, friction, restitution *float32) {
 
 func (g *Game) apiCreateConstraint(owner string, args json.RawMessage) (any, error) {
 	var a struct {
-		Type   string `json:"type"`
-		A      int32  `json:"a"`
-		B      int32  `json:"b"`
-		AID    int32  `json:"a_id"`
-		BID    int32  `json:"b_id"`
-		AIndex int32  `json:"a_index"`
-		BIndex int32  `json:"b_index"`
-		Anchor *Vec3Info `json:"anchor"`
-		Axis   *Vec3Info `json:"axis"`
-		Collide *bool    `json:"collide"`
+		Type    string    `json:"type"`
+		A       int32     `json:"a"`
+		B       int32     `json:"b"`
+		AID     int32     `json:"a_id"`
+		BID     int32     `json:"b_id"`
+		AIndex  int32     `json:"a_index"`
+		BIndex  int32     `json:"b_index"`
+		Anchor  *Vec3Info `json:"anchor"`
+		Axis    *Vec3Info `json:"axis"`
+		Collide *bool     `json:"collide"`
 		// distance
-		Length       float32 `json:"length"`
-		EnableSpring bool    `json:"enable_spring"`
-		Hertz        float32 `json:"hertz"`
-		DampingRatio float32 `json:"damping_ratio"`
-		MinLength    float32 `json:"min_length"`
-		MaxLength    float32 `json:"max_length"`
-		EnableLimit  bool    `json:"enable_limit"`
-		EnableMotor  bool    `json:"enable_motor"`
+		Length        float32 `json:"length"`
+		EnableSpring  bool    `json:"enable_spring"`
+		Hertz         float32 `json:"hertz"`
+		DampingRatio  float32 `json:"damping_ratio"`
+		MinLength     float32 `json:"min_length"`
+		MaxLength     float32 `json:"max_length"`
+		EnableLimit   bool    `json:"enable_limit"`
+		EnableMotor   bool    `json:"enable_motor"`
 		MaxMotorForce float32 `json:"max_motor_force"`
-		MotorSpeed   float32 `json:"motor_speed"`
+		MotorSpeed    float32 `json:"motor_speed"`
 		// revolute
-		TargetAngle float32 `json:"target_angle"`
-		LowerAngle  float32 `json:"lower_angle"`
-		UpperAngle  float32 `json:"upper_angle"`
+		TargetAngle    float32 `json:"target_angle"`
+		LowerAngle     float32 `json:"lower_angle"`
+		UpperAngle     float32 `json:"upper_angle"`
 		MaxMotorTorque float32 `json:"max_motor_torque"`
 		// prismatic
 		TargetTranslation float32 `json:"target_translation"`
@@ -421,23 +421,23 @@ func (g *Game) apiCreateConstraint(owner string, args json.RawMessage) (any, err
 		LowerTwistAngle float32 `json:"lower_twist_angle"`
 		UpperTwistAngle float32 `json:"upper_twist_angle"`
 		// weld
-		LinearHertz        float32 `json:"linear_hertz"`
-		AngularHertz       float32 `json:"angular_hertz"`
-		LinearDampingRatio float32 `json:"linear_damping_ratio"`
+		LinearHertz         float32 `json:"linear_hertz"`
+		AngularHertz        float32 `json:"angular_hertz"`
+		LinearDampingRatio  float32 `json:"linear_damping_ratio"`
 		AngularDampingRatio float32 `json:"angular_damping_ratio"`
 		// parallel
 		MaxTorque float32 `json:"max_torque"`
 		// wheel
-		SuspensionHertz       float32 `json:"suspension_hertz"`
+		SuspensionHertz        float32 `json:"suspension_hertz"`
 		SuspensionDampingRatio float32 `json:"suspension_damping_ratio"`
-		LowerSuspensionLimit  float32 `json:"lower_suspension_limit"`
-		UpperSuspensionLimit  float32 `json:"upper_suspension_limit"`
-		SpinSpeed             float32 `json:"spin_speed"`
-		MaxSpinTorque         float32 `json:"max_spin_torque"`
-		SteeringHertz         float32 `json:"steering_hertz"`
-		SteeringDampingRatio  float32 `json:"steering_damping_ratio"`
-		TargetSteeringAngle   float32 `json:"target_steering_angle"`
-		EnableSteering        bool    `json:"enable_steering"`
+		LowerSuspensionLimit   float32 `json:"lower_suspension_limit"`
+		UpperSuspensionLimit   float32 `json:"upper_suspension_limit"`
+		SpinSpeed              float32 `json:"spin_speed"`
+		MaxSpinTorque          float32 `json:"max_spin_torque"`
+		SteeringHertz          float32 `json:"steering_hertz"`
+		SteeringDampingRatio   float32 `json:"steering_damping_ratio"`
+		TargetSteeringAngle    float32 `json:"target_steering_angle"`
+		EnableSteering         bool    `json:"enable_steering"`
 	}
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
@@ -1266,5 +1266,3 @@ func (g *Game) apiSpawnParticle(owner string, args json.RawMessage) (any, error)
 	}
 	return count, nil
 }
-
-

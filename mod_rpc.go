@@ -14,12 +14,12 @@ import (
 const RPCProtocolVersion = "1.0.0"
 
 type RPCMessage struct {
-	JSONRPC string          `json:"jsonrpc"`
+	JSONRPC string           `json:"jsonrpc"`
 	ID      *json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *RPCError       `json:"error,omitempty"`
+	Method  string           `json:"method,omitempty"`
+	Params  json.RawMessage  `json:"params,omitempty"`
+	Result  json.RawMessage  `json:"result,omitempty"`
+	Error   *RPCError        `json:"error,omitempty"`
 }
 
 type RPCError struct {
@@ -36,17 +36,17 @@ const (
 )
 
 type GoModWorker struct {
-	ID       string
-	Cmd      *exec.Cmd
-	Stdin    io.WriteCloser
-	Stdout   io.ReadCloser
-	Seq      int64
-	SeqMu    sync.Mutex
-	Pending  map[int64]chan *RPCMessage
+	ID        string
+	Cmd       *exec.Cmd
+	Stdin     io.WriteCloser
+	Stdout    io.ReadCloser
+	Seq       int64
+	SeqMu     sync.Mutex
+	Pending   map[int64]chan *RPCMessage
 	PendingMu sync.Mutex
-	Exited   bool
-	ExitedMu sync.Mutex
-	WriteMu  sync.Mutex
+	Exited    bool
+	ExitedMu  sync.Mutex
+	WriteMu   sync.Mutex
 
 	// OnRequest handles inbound JSON-RPC requests from the worker (e.g.
 	// engine.call). It must be safe to call from the read goroutine; heavy work
@@ -80,12 +80,12 @@ func NewGoModWorker(id, workDir, entryPath string, args []string) (*GoModWorker,
 	}
 
 	w := &GoModWorker{
-		ID:       id,
-		Cmd:      cmd,
-		Stdin:    stdin,
-		Stdout:   stdout,
-		Pending:  make(map[int64]chan *RPCMessage),
-		Exited:   false,
+		ID:      id,
+		Cmd:     cmd,
+		Stdin:   stdin,
+		Stdout:  stdout,
+		Pending: make(map[int64]chan *RPCMessage),
+		Exited:  false,
 	}
 	go w.readLoop()
 	go w.monitor()
@@ -254,5 +254,3 @@ func (w *GoModWorker) Close() error {
 	}
 	return nil
 }
-
-

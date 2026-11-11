@@ -101,7 +101,7 @@ func (g *Game) equipTool(id ToolID) {
 		return
 	}
 	if id != toolPhysgun && g.held != nil {
-		g.held = nil
+		g.releaseHeld()
 	}
 	g.tool = id
 	g.toolMenuSel = id
@@ -133,7 +133,7 @@ func (g *Game) primaryAction() {
 			if g.mods != nil {
 				g.mods.FireEvent("entity.release", g.entityInfo(g.held))
 			}
-			g.held = nil
+			g.releaseHeld()
 			g.toast("RELEASED", colMuted)
 			return
 		}
@@ -153,7 +153,7 @@ func (g *Game) primaryAction() {
 			if g.mods != nil {
 				g.mods.FireEvent("entity.release", g.entityInfo(g.held))
 			}
-			g.held = nil
+			g.releaseHeld()
 		} else {
 			g.grab()
 		}
@@ -300,7 +300,7 @@ func (g *Game) freezeAimed() {
 func (g *Game) pushAimed() {
 	e := g.held
 	if e != nil {
-		g.held = nil
+		g.releaseHeld()
 	} else {
 		e, _ = g.castPropRay(28)
 	}

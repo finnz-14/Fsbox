@@ -17,13 +17,26 @@ func safeRootPath(rel string) (string, error) {
 	if rel == "" {
 		return "", fmt.Errorf("path is required")
 	}
-	full := filepath.Clean(filepath.Join(".", filepath.FromSlash(rel)))
-	if filepath.IsAbs(full) {
-		full = filepath.Clean(strings.TrimPrefix(full, string(filepath.Separator)))
+
+	root, err := filepath.Abs(".")
+	if err != nil {
+		return "", fmt.Errorf("cannot determine root directory: %w", err)
 	}
-	if full == ".." || strings.HasPrefix(full, ".."+string(os.PathSeparator)) {
+
+	// Resolve the requested path relative to the exe root so drive-letter
+	// absolute paths (C:\Windows\...) on Windows are joined under root,
+	// not allowed to escape it.
+	full := filepath.Clean(filepath.Join(root, filepath.FromSlash(rel)))
+
+	// Ensure the resolved path stays inside the root (exe folder).
+	relFromRoot, err := filepath.Rel(root, full)
+	if err != nil {
 		return "", fmt.Errorf("path escapes root directory")
 	}
+	if relFromRoot == ".." || strings.HasPrefix(relFromRoot, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path escapes root directory")
+	}
+
 	return full, nil
 }
 
@@ -47,6 +60,16 @@ func (g *Game) apiConfigRead(args json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return string(data), nil
+}
+
+// MotionLocksInfo is the JSON-serializable form of box3d.MotionLocks.
+type MotionLocksInfo struct {
+	LinearX  bool `json:"linear_x"`
+	LinearY  bool `json:"linear_y"`
+	LinearZ  bool `json:"linear_z"`
+	AngularX bool `json:"angular_x"`
+	AngularY bool `json:"angular_y"`
+	AngularZ bool `json:"angular_z"`
 }
 
 func (g *Game) apiConfigWrite(args json.RawMessage) (any, error) {
@@ -168,6 +191,8 @@ func (g *Game) apiModelLoad(args json.RawMessage) (any, error) {
 		return nil, fmt.Errorf("model %q has no meshes", a.Path)
 	}
 
+	applyMissingTexture(&model)
+
 	// Physics colliders are centred on the body origin, but model files are
 	// usually authored with their feet on y=0 or an offset pivot. Move the
 	// model so its bounding-box centre sits on the origin, keeping the mesh
@@ -178,6 +203,14 @@ func (g *Game) apiModelLoad(args json.RawMessage) (any, error) {
 	cz := (bb.Min.Z + bb.Max.Z) * 0.5
 	if absf(cx) > 0.001 || absf(cy) > 0.001 || absf(cz) > 0.001 {
 		model.Transform = rl.MatrixMultiply(rl.MatrixTranslate(-cx, -cy, -cz), model.Transform)
+	}
+
+	// Apply the game's main shader to all materials so the model gets proper
+	// lighting and shadows (not fullbright).
+	if g.mainShader.ID != 0 {
+		for j := 0; j < int(model.MaterialCount); j++ {
+			modelMaterial(&model, j).Shader = g.mainShader
+		}
 	}
 
 	anims := rl.LoadModelAnimations(a.Path)

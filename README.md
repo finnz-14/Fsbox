@@ -36,14 +36,14 @@ To build a standalone executable into `bin\`:
 
 ```powershell
 .\build.bat
-.\bin\fsbox.exe
+.\fsbox.exe
 ```
 
-`build.bat` sets `CGO_ENABLED=0`, creates `bin\` if needed, and writes
-`bin\fsbox.exe`. You can also build manually:
+`build.bat` sets `CGO_ENABLED=0` and writes `fsbox.exe` at the root.
+You can also build manually:
 
 ```powershell
-go build -o bin\fsbox.exe .
+go build -o fsbox.exe .
 ```
 
 Run the automated tests:
@@ -151,7 +151,7 @@ the root of `Spawnables`.
 
 The game looks for `Content/Spawnables` in the working directory, next to the
 executable, and one or two folders above it, so both `go run .` and
-`bin\fsbox.exe` find the same content. Loader diagnostics are printed to the
+`fsbox.exe` find the same content. Loader diagnostics are printed to the
 console with a `[content]` prefix.
 
 ## Gameplay details
@@ -211,7 +211,7 @@ console with a `[content]` prefix.
 | `settings.go` | Settings values, persistence, clamping and the gravity tool |
 | `save.go` | Versioned JSON save/load of dynamic props, frozen state and player pose |
 | `game_test.go` | Headless tests for physics, tools, save/load, spawning, gravity and UI filters |
-| `build.bat` | Windows build helper that produces `bin\fsbox.exe` |
+| `build.bat` | Windows build helper that produces `fsbox.exe` |
 
 The arena is rebuilt on every load; only dynamic props, their frozen state, and
 the player pose are stored in `fsbox_save.json` (created the first time you

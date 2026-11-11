@@ -89,6 +89,7 @@ type Game struct {
 	collectVisualDepth bool
 
 	held       *Entity
+	heldLocked bool
 	holdDist   float32
 	holdOffset box3d.Vec3
 	spawnDist  float32
@@ -628,6 +629,7 @@ func (g *Game) Update(dt float64) {
 		g.updateModParticles(float32(simDt))
 		g.updateMusic()
 		g.advanceAnimations(float32(simDt))
+		g.updateSkeletalCollisions()
 		if g.shake > 0 {
 			g.shake -= simDt
 			if g.shake < 0 {
@@ -894,6 +896,13 @@ func (g *Game) tick(dt float32) {
 		g.updateHeld(dt)
 	}
 	g.world.Step(dt, 2)
+	// Never let physics impart auto-rotation on a held prop. Rotation only
+	// happens when the player explicitly holds E/R and moves the mouse
+	// (updateHeldRotation). Zero angular velocity every tick so contact with
+	// walls cannot make the object spin on its own.
+	if g.held != nil {
+		g.held.Body.SetAngularVelocity(box3d.Vec3Zero)
+	}
 	g.updateProjectiles(dt)
 	g.enforceBounds()
 

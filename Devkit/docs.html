@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FSBox DevKit - Mod SDK Reference</title>
+<style>
+:root{
+  --bg:#07080a;
+  --panel:#0f1115;
+  --panel2:#0a0c0f;
+  --border:#3a404b;
+  --border-hi:#5a606c;
+  --accent:#f0ad4e;
+  --accent-hover:#ffc966;
+  --accent-glow:rgba(240,173,78,0.2);
+  --text:#ffffff;
+  --text-dim:#b8c0cc;
+  --muted:#7a8494;
+  --code:#0a0c0f;
+  --code-border:#2a2f3d;
+  --kw:#ff7b72;
+  --str:#a5d6ff;
+  --fn:#ffd460;
+  --type:#d2a8ff;
+  --num:#79c0ff;
+  --comment:#7a8494;
+  --success:#3fb950;
+  --warning:#d29922;
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{margin:0;font-family:"Segoe UI Variable","Segoe UI",-apple-system,BlinkMacSystemFont,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;font-size:15px;}
+::selection{background:var(--accent);color:#000;}
+
+/* Header */
+header{background:var(--panel);padding:20px 28px;border-bottom:2px solid var(--accent);box-shadow:0 2px 0 var(--border);}
+header h1{margin:0;font-size:20px;color:var(--text);letter-spacing:0.5px;text-transform:uppercase;}
+header h1 span{color:var(--accent);font-weight:800;}
+header p{margin:6px 0 0;color:var(--text-dim);font-size:13px;}
+
+/* Tabs */
+.tabs{display:flex;flex-wrap:wrap;background:var(--panel2);padding:8px 28px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30;}
+.tabbtn{background:transparent;border:1px solid transparent;color:var(--text-dim);padding:8px 14px;margin:4px 2px;border-radius:3px;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s ease;position:relative;}
+.tabbtn:hover{color:var(--accent-hover);background:rgba(240,173,78,0.08);}
+.tabbtn.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:800;animation:tabPop .2s ease both;}
+@keyframes tabPop{0%{transform:scale(.95)}100%{transform:scale(1)}}
+
+/* Main */
+main{max-width:1200px;margin:20px auto 60px;padding:0 28px;}
+.tab{display:none;animation:fadeIn .4s ease both;}
+.tab.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* Headings */
+h2{color:var(--accent-hover);border-bottom:2px solid var(--border);padding-bottom:10px;font-size:18px;margin-top:0;margin-bottom:22px;position:relative;}
+h2::after{content:"";position:absolute;left:0;bottom:-2px;right:0;height:3px;background:linear-gradient(90deg,var(--accent),transparent);}
+h3{color:var(--accent);font-size:15px;margin-top:20px;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.6px;}
+
+/* Text */
+p{line-height:1.7;margin:7px 0;color:var(--text-dim);}
+ul{line-height:1.75;margin:7px 0;padding-left:22px;color:var(--text-dim);}
+li{margin-bottom:4px;}
+
+/* Unified code blocks - ALL code uses this single path */
+pre.code-block{
+  position:relative;
+  display:block;
+  width:100%;
+  box-sizing:border-box;
+  padding:14px 16px;
+  border-left:3px solid var(--accent);
+  border:1px solid var(--code-border);
+  border-radius:3px;
+  background:var(--code);
+  white-space:pre-wrap;
+  margin:10px 0;
+  font-family:Consolas,"Courier New",monospace;
+  font-size:13px;
+  color:var(--text-dim);
+}
+pre.code-block code{
+  color:var(--text-dim);
+  font-size:13px;
+  font-family:inherit;
+}
+pre.code-block .copy-btn{
+  position:absolute;
+  top:8px;
+  right:8px;
+  opacity:0;
+  background:var(--panel);
+  border:1px solid var(--border-hi);
+  color:var(--text-dim);
+  padding:4px 10px;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+  border-radius:3px;
+  transition:opacity .2s,background .2s,color .2s,border-color .2s;
+}
+pre.code-block:hover .copy-btn{opacity:1;}
+pre.code-block .copy-btn:hover{background:var(--accent);color:#000;border-color:var(--accent);}
+.copied{color:#000!important;background:var(--success)!important;border-color:var(--success)!important;animation:copyFlash .35s ease both;}
+@keyframes copyFlash{0%{background:var(--success)}50%{background:var(--accent-hover)}100%{background:var(--success)}}
+
+/* Code inside table cells */
+table.api td code.inline-cell{
+  display:block;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  padding:6px 10px;
+  border-left:3px solid var(--accent);
+  border:1px solid var(--code-border);
+  border-radius:3px;
+  background:var(--code);
+  margin:4px 0;
+  font-size:12.5px;
+  color:var(--text-dim);
+  font-family:Consolas,"Courier New",monospace;
+}
+
+/* Inline code */
+code.inline{
+  background:var(--code);
+  border:1px solid var(--code-border);
+  color:var(--accent-hover);
+  padding:1px 7px;
+  border-radius:3px;
+  font-size:13px;
+  font-weight:600;
+}
+
+/* Syntax highlighting */
+.s-k{color:var(--kw);font-weight:700;}
+.s-c{color:var(--comment);font-style:italic;}
+.s-s{color:var(--str);}
+.s-f{color:var(--fn);font-weight:700;}
+.s-t{color:var(--type);}
+.s-n{color:var(--num);}
+.s-p{color:var(--text-dim);}
+.s-o{color:var(--text-dim);}
+.o{color:var(--text-dim);}
+
+/* Tables - API */
+table.api{
+  table-layout:fixed;
+  width:100%;
+  border-collapse:collapse;
+  margin:12px 0;
+  font-size:14px;
+}
+table.api th,
+table.api td{
+  border:1px solid var(--border);
+  padding:10px 12px;
+  text-align:left;
+  vertical-align:top;
+}
+table.api th{
+  background:var(--panel);
+  color:var(--accent-hover);
+  font-weight:800;
+  text-transform:uppercase;
+  font-size:12px;
+  letter-spacing:0.5px;
+}
+table.api tr:nth-child(even) td{background:#12151a;}
+table.api tr:hover td{background:rgba(240,173,78,0.08);}
+
+/* Column widths for 3-col API tables */
+table.api td:nth-child(1){width:26%;}
+table.api td:nth-child(2){width:40%;}
+table.api td:nth-child(3){width:34%;}
+
+/* Example cards */
+.example{
+  background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--accent);
+  border-radius:4px;padding:16px 20px;margin:16px 0;
+}
+.example h3{margin-top:0;color:var(--text);}
+
+/* Callout */
+.callout{
+  background:var(--panel2);border-left:4px solid var(--accent);padding:12px 16px;margin:16px 0;
+  font-size:14px;color:var(--text-dim);
+}
+.callout.warn{border-left-color:var(--warning);}
+.callout.info{border-left-color:var(--fn);}
+
+/* Grid */
+.grid{
+  display:grid;grid-template-columns:210px 1fr;gap:8px 20px;margin:12px 0;
+}
+.grid div{padding:7px 0;border-bottom:1px dashed var(--border);color:var(--text-dim);}
+.grid .k{color:var(--accent-hover);font-weight:800;font-size:13px;}
+
+/* Footer */
+footer{text-align:center;padding:26px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);}
+
+/* Responsive */
+@media (max-width:768px){
+  .tabs{padding:8px 16px;}
+  .tabbtn{font-size:12px;padding:6px 11px;}
+  main{margin:16px auto 40px;padding:0 16px;}
+  table.api td:nth-child(1){width:24%;}
+  table.api td:nth-child(2){width:42%;}
+  table.api td:nth-child(3){width:34%;}
+}
+</style>
+</head>
+<body>
+<header>
+<h1>FSBox <span>DevKit</span> - Mod SDK Reference</h1>
+<p>Complete SDK documentation. Every API with signature, use case, and runnable example.</p>
+</header>
+<div class="tabs">
+<button class="tabbtn active" onclick="showTab('types')">Types</button>
+<button class="tabbtn" onclick="showTab('lifecycle')">Lifecycle</button>
+<button class="tabbtn" onclick="showTab('engine')">Engine</button>
+<button class="tabbtn" onclick="showTab('entities')">Entities</button>
+<button class="tabbtn" onclick="showTab('anims')">Animations</button>
+<button class="tabbtn" onclick="showTab('player')">Player &amp; Camera</button>
+<button class="tabbtn" onclick="showTab('physics')">Physics</button>
+<button class="tabbtn" onclick="showTab('particles')">Particles</button>
+<button class="tabbtn" onclick="showTab('weapons')">Weapons &amp; Tools</button>
+<button class="tabbtn" onclick="showTab('world')">World &amp; Settings</button>
+<button class="tabbtn" onclick="showTab('ui')">Screen UI</button>
+<button class="tabbtn" onclick="showTab('render')">Render &amp; Drawing</button>
+<button class="tabbtn" onclick="showTab('billboards')">Billboards</button>
+<button class="tabbtn" onclick="showTab('audio')">Audio</button>
+<button class="tabbtn" onclick="showTab('input')">Input</button>
+<button class="tabbtn" onclick="showTab('config')">Config</button>
+<button class="tabbtn" onclick="showTab('models')">Models &amp; Shaders</button>
+<button class="tabbtn" onclick="showTab('content')">Content &amp; Resources</button>
+<button class="tabbtn" onclick="showTab('keys')">Keys &amp; Mouse</button>
+<button class="tabbtn" onclick="showTab('examples')">Full Examples</button>
+</div>
+<main>
+
+<div id="types" class="tab active">
+<h2>Types</h2>
+<h3>Color</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> Color <span class="s-k">struct</span> {
+    R <span class="s-t">uint8</span> <span class="s-p">`</span><span class="s-s">json:"r"</span><span class="s-p">`</span>
+    G <span class="s-t">uint8</span> <span class="s-p">`</span><span class="s-s">json:"g"</span><span class="s-p">`</span>
+    B <span class="s-t">uint8</span> <span class="s-p">`</span><span class="s-s">json:"b"</span><span class="s-p">`</span>
+    A <span class="s-t">uint8</span> <span class="s-p">`</span><span class="s-s">json:"a"</span><span class="s-p">`</span>
+}</code></pre>
+<p>RGBA color value. Alpha channel ranges from 0 (transparent) to 255 (opaque).</p>
+<pre class="code-block"><code class="language-go"><span class="s-c">// White opaque color</span>
+c := <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>}
+
+<span class="s-c">// Half-transparent red</span>
+red := <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">0</span>, <span class="s-k">B</span>: <span class="s-n">0</span>, <span class="s-k">A</span>: <span class="s-n">128</span>}</code></pre>
+
+<h3>Vec3</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> Vec3 <span class="s-k">struct</span> {
+    X <span class="s-t">float32</span> <span class="s-p">`</span><span class="s-s">json:"x"</span><span class="s-p">`</span>
+    Y <span class="s-t">float32</span> <span class="s-p">`</span><span class="s-s">json:"y"</span><span class="s-p">`</span>
+    Z <span class="s-t">float32</span> <span class="s-p">`</span><span class="s-s">json:"z"</span><span class="s-p">`</span>
+}</code></pre>
+<p>3D position or vector in world space.</p>
+<pre class="code-block"><code class="language-go">pos := <span class="s-f">fsbox.Vec3</span>{<span class="s-k">X</span>: <span class="s-n">0</span>, <span class="s-k">Y</span>: <span class="s-n">2</span>, <span class="s-k">Z</span>: <span class="s-n">12</span>}</code></pre>
+
+<h3>Entity</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> Entity <span class="s-k">struct</span> {
+    ID           <span class="s-t">int32</span>
+    Name         <span class="s-t">string</span>
+    Kind         <span class="s-t">string</span>
+    Static       <span class="s-k">bool</span>
+    Frozen       <span class="s-k">bool</span>
+    Invulnerable <span class="s-k">bool</span>
+    Transient    <span class="s-k">bool</span>
+    Health       <span class="s-t">float32</span>
+    MaxHealth    <span class="s-t">float32</span>
+    Position     <span class="s-t">Vec3</span>
+    Color        <span class="s-t">Color</span>
+    Half         <span class="s-t">Vec3</span>
+    Radius       <span class="s-t">float32</span>
+    Height       <span class="s-t">float32</span>
+    Owner        <span class="s-t">string</span>
+}</code></pre>
+
+<h3>Event</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> Event <span class="s-k">struct</span> {
+    Name   <span class="s-t">string</span>
+    Data   <span class="s-t">json.RawMessage</span>
+    Entity <span class="s-t">Entity</span>
+}</code></pre>
+
+<h3>EventHandler / TickHandler</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> EventHandler <span class="s-k">func</span>(<span class="s-t">Event</span>)
+<span class="s-k">type</span> TickHandler <span class="s-k">func</span>()</code></pre>
+
+<h3>AnimationInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> AnimationInfo <span class="s-k">struct</span> {
+    Index     <span class="s-t">int32</span>
+    Name      <span class="s-t">string</span>
+    Keyframes <span class="s-t">int32</span>
+    Bones     <span class="s-t">int32</span>
+    Current   <span class="s-k">bool</span>
+    Playing   <span class="s-k">bool</span>
+    Frame     <span class="s-t">float32</span>
+    Speed     <span class="s-t">float32</span>
+}</code></pre>
+
+<h3>EntityInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> EntityInfo <span class="s-k">struct</span> {
+    ID           <span class="s-t">int32</span>
+    Name         <span class="s-t">string</span>
+    Kind         <span class="s-t">string</span>
+    Static       <span class="s-k">bool</span>
+    Frozen       <span class="s-k">bool</span>
+    Invulnerable <span class="s-k">bool</span>
+    Transient    <span class="s-k">bool</span>
+    Health       <span class="s-t">float32</span>
+    MaxHealth    <span class="s-t">float32</span>
+    Position     <span class="s-t">Vec3</span>
+    Rotation     <span class="s-t">Quat</span>
+    Velocity     <span class="s-t">Vec3</span>
+    AngularVel   <span class="s-t">Vec3</span>
+    Mass         <span class="s-t">float32</span>
+    Color        <span class="s-t">Color</span>
+    Half         <span class="s-t">Vec3</span>
+    Radius       <span class="s-t">float32</span>
+    Height       <span class="s-t">float32</span>
+    Density      <span class="s-t">float32</span>
+    Friction     <span class="s-t">float32</span>
+    Restitution  <span class="s-t">float32</span>
+    Owner        <span class="s-t">string</span>
+    HasModel     <span class="s-k">bool</span>
+}</code></pre>
+
+<h3>PlayerInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> PlayerInfo <span class="s-k">struct</span> {
+    Position   <span class="s-t">Vec3</span>
+    Rotation   <span class="s-t">Quat</span>
+    Velocity   <span class="s-t">Vec3</span>
+    Yaw        <span class="s-t">float32</span>
+    Pitch      <span class="s-t">float32</span>
+    Fly        <span class="s-k">bool</span>
+    Grounded   <span class="s-k">bool</span>
+    Health     <span class="s-t">float32</span>
+    MaxHealth  <span class="s-t">float32</span>
+    SpeedScale <span class="s-t">float32</span>
+    JumpScale  <span class="s-t">float32</span>
+    Eye        <span class="s-t">Vec3</span>
+    Forward    <span class="s-t">Vec3</span>
+    Color      <span class="s-t">Color</span>
+}</code></pre>
+
+<h3>EngineInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> EngineInfo <span class="s-k">struct</span> {
+    Game        <span class="s-t">string</span>
+    Version     <span class="s-t">string</span>
+    APIVersion  <span class="s-t">string</span>
+    State       <span class="s-t">string</span>
+    Time        <span class="s-t">float64</span>
+    Frame       <span class="s-t">int64</span>
+    FPS         <span class="s-t">int32</span>
+    TimeScale   <span class="s-t">float64</span>
+    Paused      <span class="s-k">bool</span>
+    EntityCount <span class="s-t">int</span>
+    PropCount   <span class="s-t">int</span>
+    Player      <span class="s-t">PlayerInfo</span>
+}</code></pre>
+
+<h3>Quat / Vec2 / Ray</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> Quat <span class="s-k">struct</span> {
+    X, Y, Z, W <span class="s-t">float32</span>
+}
+
+<span class="s-k">type</span> Vec2 <span class="s-k">struct</span> {
+    X, Y <span class="s-t">float32</span>
+}
+
+<span class="s-k">type</span> Ray <span class="s-k">struct</span> {
+    Origin    <span class="s-t">Vec3</span>
+    Direction <span class="s-t">Vec3</span>
+}</code></pre>
+
+<h3>CameraInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> CameraInfo <span class="s-k">struct</span> {
+    Position <span class="s-t">Vec3</span>
+    Target   <span class="s-t">Vec3</span>
+    Up       <span class="s-t">Vec3</span>
+    FOV      <span class="s-t">float32</span>
+    Mode     <span class="s-t">int32</span> <span class="s-c">// 0 = first person, 1 = third person</span>
+    Distance <span class="s-t">float32</span>
+}</code></pre>
+
+<h3>PhysicsStats / RaycastInfo / ConstraintInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> PhysicsStats <span class="s-k">struct</span> {
+    AwakeBodies <span class="s-t">int32</span>
+    Bodies      <span class="s-t">int32</span>
+    Props       <span class="s-t">int32</span>
+    BoundsMin   <span class="s-t">Vec3</span>
+    BoundsMax   <span class="s-t">Vec3</span>
+}
+
+<span class="s-k">type</span> RaycastInfo <span class="s-k">struct</span> {
+    Hit      <span class="s-k">bool</span>
+    EntityID <span class="s-t">int32</span>
+    Entity   <span class="o">*</span><span class="s-t">EntityInfo</span>
+    Point    <span class="s-t">Vec3</span>
+    Normal   <span class="s-t">Vec3</span>
+    Fraction <span class="s-t">float32</span>
+    Distance <span class="s-t">float32</span>
+}
+
+<span class="s-k">type</span> ConstraintInfo <span class="s-k">struct</span> {
+    ID      <span class="s-t">int32</span>
+    Type    <span class="s-t">string</span>
+    EntityA <span class="s-t">int32</span>
+    EntityB <span class="s-t">int32</span>
+    Owner   <span class="s-t">string</span>
+}</code></pre>
+
+<h3>WeaponInfo / ToolInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> WeaponInfo <span class="s-k">struct</span> {
+    ID, Ammo, MaxAmmo <span class="s-t">int32</span>
+    Name, Type       <span class="s-t">string</span>
+    Damage, Range    <span class="s-t">float32</span>
+    FireRate, Recoil <span class="s-t">float32</span>
+    Spread           <span class="s-t">float32</span>
+    ProjectileSpeed, ProjectileLife, ProjectileSize <span class="s-t">float32</span>
+    Color            <span class="s-t">Color</span>
+    Owner            <span class="s-t">string</span>
+}
+
+<span class="s-k">type</span> ToolInfo <span class="s-k">struct</span> {
+    ID            <span class="s-t">int32</span>
+    Name          <span class="s-t">string</span>
+    PrimaryDesc   <span class="s-t">string</span>
+    SecondaryDesc <span class="s-t">string</span>
+    ReloadDesc    <span class="s-t">string</span>
+    Color         <span class="s-t">Color</span>
+    PrimaryHook   <span class="s-t">string</span>
+    SecondaryHook <span class="s-t">string</span>
+    ReloadHook    <span class="s-t">string</span>
+    Owner         <span class="s-t">string</span>
+}</code></pre>
+
+<h3>SkyInfo / SettingsInfo / PresetInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> SkyInfo <span class="s-k">struct</span> {
+    Top, Bottom <span class="s-t">Color</span>
+}
+
+<span class="s-k">type</span> SettingsInfo <span class="s-k">struct</span> {
+    Gravity     <span class="s-t">float32</span>
+    Sensitivity <span class="s-t">float32</span>
+    FOV         <span class="s-t">float32</span>
+    UIScale     <span class="s-t">float32</span>
+    InvertY     <span class="s-k">bool</span>
+    Shadows     <span class="s-k">bool</span>
+    DisplayMode <span class="s-t">int32</span>
+    RawInput    <span class="s-k">bool</span>
+}
+
+<span class="s-k">type</span> PresetInfo <span class="s-k">struct</span> {
+    Index       <span class="s-t">int32</span>
+    Name        <span class="s-t">string</span>
+    Category    <span class="s-t">string</span>
+    Kind        <span class="s-t">string</span>
+    Half        <span class="s-t">Vec3</span>
+    Radius      <span class="s-t">float32</span>
+    Height      <span class="s-t">float32</span>
+    Density     <span class="s-t">float32</span>
+    Friction    <span class="s-t">float32</span>
+    Restitution <span class="s-t">float32</span>
+    Color       <span class="s-t">Color</span>
+    HasModel    <span class="s-k">bool</span>
+}</code></pre>
+
+<h3>UIElement</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> UIElement <span class="s-k">struct</span> {
+    ID    <span class="s-t">int32</span>
+    Kind  <span class="s-t">string</span>
+    X, Y  <span class="s-t">float32</span>
+    W, H  <span class="s-t">float32</span>
+    Label <span class="s-t">string</span>
+    Color <span class="s-t">Color</span>
+    Value <span class="s-t">float32</span>
+    Min   <span class="s-t">float32</span>
+    Max   <span class="s-t">float32</span>
+}</code></pre>
+
+<h3>BillboardElementUpdate</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> BillboardElementUpdate <span class="s-k">struct</span> {
+    X         <span class="o">*</span><span class="s-t">float32</span>
+    Y         <span class="o">*</span><span class="s-t">float32</span>
+    W         <span class="o">*</span><span class="s-t">float32</span>
+    H         <span class="o">*</span><span class="s-t">float32</span>
+    Label     <span class="o">*</span><span class="s-t">string</span>
+    Color     <span class="o">*</span><span class="s-t">Color</span>
+    TextColor <span class="o">*</span><span class="s-t">Color</span>
+    TextSize  <span class="o">*</span><span class="s-t">float32</span>
+    WorldSize <span class="o">*</span><span class="s-k">bool</span>
+}</code></pre>
+
+<h3>BillboardHover</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> BillboardHover <span class="s-k">struct</span> {
+    Panel   <span class="s-t">int32</span> <span class="s-p">`</span><span class="s-s">json:"panel"</span><span class="s-p">`</span>
+    Element <span class="s-t">int32</span> <span class="s-p">`</span><span class="s-s">json:"element"</span><span class="s-p">`</span>
+}</code></pre>
+</div>
+
+<div id="lifecycle" class="tab">
+<h2>Lifecycle</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">On(event, handler)</code></td><td><code class="inline-cell">On(string, func(fsbox.Event))</code></td><td>Subscribe to engine events. Example events: <code class="inline">"world.reset"</code>, <code class="inline">"ui.click"</code>.</td></tr>
+<tr><td><code class="inline">OnTick(handler)</code></td><td><code class="inline-cell">OnTick(func())</code></td><td>Register a function called every simulation frame.</td></tr>
+<tr><td><code class="inline">Call(cmd, args)</code></td><td><code class="inline-cell">Call(string, any) (json.RawMessage, error)</code></td><td>Low-level engine command router. Use only when no wrapper exists.</td></tr>
+<tr><td><code class="inline">Log(msg)</code></td><td><code class="inline-cell">Log(string)</code></td><td>Write a message to the engine console/log.</td></tr>
+<tr><td><code class="inline">Toast(msg, c)</code></td><td><code class="inline-cell">Toast(string, fsbox.Color)</code></td><td>Show a temporary on-screen toast notification.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go"><span class="s-f">fsbox.On</span>(<span class="s-s">"world.reset"</span>, <span class="s-k">func</span>(e <span class="s-f">fsbox.Event</span>) {
+    <span class="s-c">// world was reset; clear cached ids</span>
+})
+<span class="s-f">fsbox.OnTick</span>(<span class="s-k">func</span>() {
+    <span class="s-c">// runs every frame</span>
+})
+<span class="s-f">fsbox.Log</span>(<span class="s-s">"mod started"</span>)
+<span class="s-f">fsbox.Toast</span>(<span class="s-s">"hello"</span>, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+resp, err := <span class="s-f">fsbox.Call</span>(<span class="s-s">"engine.info"</span>, <span class="s-k">nil</span>)</code></pre>
+</div>
+</div>
+
+<div id="engine" class="tab">
+<h2>Engine</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">GetEngineInfo()</code></td><td><code class="inline-cell">GetEngineInfo() (EngineInfo, error)</code></td><td>Check current state (<code class="inline">"menu"</code>, <code class="inline">"map_menu"</code>, <code class="inline">"playing"</code>, <code class="inline">"paused"</code>, ...), FPS, time scale, player and counts.</td></tr>
+<tr><td><code class="inline">GetAPIVersion()</code></td><td><code class="inline-cell">GetAPIVersion() (string, error)</code></td><td>Read the mod API version implemented by the running game.</td></tr>
+<tr><td><code class="inline">GetTime()</code></td><td><code class="inline-cell">GetTime() (float64, error)</code></td><td>Simulated seconds since the world started.</td></tr>
+<tr><td><code class="inline">SetTimeScale(scale)</code></td><td><code class="inline-cell">SetTimeScale(float32) (float64, error)</code></td><td>Change simulation speed; 1.0 is real time, 0 pauses without the menu.</td></tr>
+<tr><td><code class="inline">SetPaused(paused)</code></td><td><code class="inline-cell">SetPaused(bool) error</code></td><td>Open or close the pause menu.</td></tr>
+<tr><td><code class="inline">ResetWorld(starter)</code></td><td><code class="inline-cell">ResetWorld(bool) error</code></td><td>Rebuild the current map; starter controls the default prop layout.</td></tr>
+<tr><td><code class="inline">SaveGame() / LoadGame()</code></td><td><code class="inline-cell">SaveGame() error / LoadGame() error</code></td><td>Write or restore the world save slot.</td></tr>
+<tr><td><code class="inline">Quit()</code></td><td><code class="inline-cell">Quit() error</code></td><td>Close the game after the current frame.</td></tr>
+<tr><td><code class="inline">Screenshot(path)</code></td><td><code class="inline-cell">Screenshot(string) (string, error)</code></td><td>Capture the framebuffer to a root-relative path.</td></tr>
+<tr><td><code class="inline">BindKey(key, event)</code></td><td><code class="inline-cell">BindKey(int32, string) error</code></td><td>Fire an event whenever a key is pressed. Use the Key* constants.</td></tr>
+<tr><td><code class="inline">UnbindKey(key, event)</code></td><td><code class="inline-cell">UnbindKey(int32, string) error</code></td><td>Remove a key binding.</td></tr>
+<tr><td><code class="inline">BindMouse(button, event)</code></td><td><code class="inline-cell">BindMouse(int32, string) error</code></td><td>Fire an event when a mouse button is pressed.</td></tr>
+<tr><td><code class="inline">UnbindMouse(button, event)</code></td><td><code class="inline-cell">UnbindMouse(int32, string) error</code></td><td>Remove a mouse binding.</td></tr>
+<tr><td><code class="inline">SetHUDHook(hook)</code></td><td><code class="inline-cell">SetHUDHook(string) error</code></td><td>Call an exported function during the HUD pass.</td></tr>
+<tr><td><code class="inline">HasPermission(name)</code></td><td><code class="inline-cell">HasPermission(string) (bool, error)</code></td><td>Check whether the manifest granted a permission.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">info, err := <span class="s-f">fsbox.GetEngineInfo</span>()
+<span class="s-k">if</span> err != <span class="s-k">nil</span> { <span class="s-f">fsbox.Log</span>(err.Error()); <span class="s-k">return</span> }
+<span class="s-k">if</span> info.State != <span class="s-s">"playing"</span> { <span class="s-k">return</span> }
+
+player := info.Player
+<span class="s-k">_</span> = player.Position
+<span class="s-k">_</span> = player.Forward
+
+<span class="s-c">// Slow motion while a key is held</span>
+<span class="s-k">if</span> down, <span class="s-k">_</span> := <span class="s-f">fsbox.InputKeyDown</span>(<span class="s-f">fsbox.KeyLeftShift</span>); down {
+    <span class="s-k">_</span> = <span class="s-f">fsbox.SetTimeScale</span>(<span class="s-n">0.25</span>)
+} <span class="s-k">else</span> {
+    <span class="s-k">_</span> = <span class="s-f">fsbox.SetTimeScale</span>(<span class="s-n">1</span>)
+}
+
+<span class="s-f">fsbox.BindKey</span>(<span class="s-f">fsbox.KeyF5</span>, <span class="s-s">"mod.save"</span>)
+<span class="s-f">fsbox.On</span>(<span class="s-s">"mod.save"</span>, <span class="s-k">func</span>(e <span class="s-f">fsbox.Event</span>) { <span class="s-k">_</span> = <span class="s-f">fsbox.SaveGame</span>() })</code></pre>
+</div>
+</div>
+
+<div id="entities" class="tab">
+<h2>Entities</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">SpawnPreset(name, pos, color)</code></td><td><code class="inline-cell">SpawnPreset(string, fsbox.Vec3, fsbox.Color) (int32, error)</code></td><td>Spawn a content preset (crate, ball, etc.) at a position.</td></tr>
+<tr><td><code class="inline">SpawnEntity(kind, pos, color)</code></td><td><code class="inline-cell">SpawnEntity(string, fsbox.Vec3, fsbox.Color) (int32, error)</code></td><td>Spawn a primitive entity by kind name.</td></tr>
+<tr><td><code class="inline">SpawnModelEntity(model, pos, color)</code></td><td><code class="inline-cell">SpawnModelEntity(int32, fsbox.Vec3, fsbox.Color) (int32, error)</code></td><td>Spawn an entity using a loaded model handle.</td></tr>
+<tr><td><code class="inline">SpawnEntityCopy(id, pos)</code></td><td><code class="inline-cell">SpawnEntityCopy(int32, *fsbox.Vec3) (EntityInfo, error)</code></td><td>Duplicate an entity, optionally at a new position.</td></tr>
+<tr><td><code class="inline">GetEntity(id)</code></td><td><code class="inline-cell">GetEntity(int32) (EntityInfo, error)</code></td><td>Read an entity's transform, health, color, material and velocity.</td></tr>
+<tr><td><code class="inline">GetEntities(static, props)</code></td><td><code class="inline-cell">GetEntities(bool, bool) ([]EntityInfo, error)</code></td><td>List every entity, optionally including static geometry and props.</td></tr>
+<tr><td><code class="inline">RemoveEntity(id)</code></td><td><code class="inline-cell">RemoveEntity(int32) error</code></td><td>Delete one entity.</td></tr>
+<tr><td><code class="inline">ClearEntities()</code></td><td><code class="inline-cell">ClearEntities() (int, error)</code></td><td>Remove every prop, including transient ones.</td></tr>
+<tr><td><code class="inline">ClearTransientEntities()</code></td><td><code class="inline-cell">ClearTransientEntities() (int, error)</code></td><td>Remove only transient props such as projectiles.</td></tr>
+<tr><td><code class="inline">SetEntityModel(id, model)</code></td><td><code class="inline-cell">SetEntityModel(int32, int32) error</code></td><td>Replace an entity's model at runtime; skeletal collision is rebuilt.</td></tr>
+<tr><td><code class="inline">SetEntityColor(id, c)</code></td><td><code class="inline-cell">SetEntityColor(int32, fsbox.Color) error</code></td><td>Change an entity's color.</td></tr>
+<tr><td><code class="inline">SetEntityPos(id, pos)</code></td><td><code class="inline-cell">SetEntityPos(int32, fsbox.Vec3) error</code></td><td>Teleport an entity.</td></tr>
+<tr><td><code class="inline">SetEntityRotation(id, yaw, pitch)</code></td><td><code class="inline-cell">SetEntityRotation(int32, float32, float32) error</code></td><td>Set yaw/pitch rotation.</td></tr>
+<tr><td><code class="inline">SetEntityQuat(id, q)</code></td><td><code class="inline-cell">SetEntityQuat(int32, fsbox.Quat) error</code></td><td>Set an exact quaternion rotation.</td></tr>
+<tr><td><code class="inline">SetEntityTransform(id, pos, q)</code></td><td><code class="inline-cell">SetEntityTransform(int32, fsbox.Vec3, fsbox.Quat) error</code></td><td>Set position and rotation together.</td></tr>
+<tr><td><code class="inline">SetEntityName(id, name)</code></td><td><code class="inline-cell">SetEntityName(int32, string) error</code></td><td>Rename an entity.</td></tr>
+<tr><td><code class="inline">SetEntityFrozen(id, frozen)</code></td><td><code class="inline-cell">SetEntityFrozen(int32, bool) error</code></td><td>Freeze or thaw an entity in place.</td></tr>
+<tr><td><code class="inline">SetEntityStatic(id, static)</code></td><td><code class="inline-cell">SetEntityStatic(int32, bool) error</code></td><td>Make a body static (immovable) or dynamic.</td></tr>
+<tr><td><code class="inline">SetEntityInvulnerable(id, v)</code></td><td><code class="inline-cell">SetEntityInvulnerable(int32, bool) error</code></td><td>Toggle damage immunity.</td></tr>
+<tr><td><code class="inline">SetEntityHealth(id, hp, max)</code></td><td><code class="inline-cell">SetEntityHealth(int32, float32, float32) error</code></td><td>Set current and maximum health.</td></tr>
+<tr><td><code class="inline">DamageEntity(id, dmg, point)</code></td><td><code class="inline-cell">DamageEntity(int32, float32, *fsbox.Vec3) (DamageResult, error)</code></td><td>Apply damage, optionally at a world point.</td></tr>
+<tr><td><code class="inline">HealEntity(id, amount)</code></td><td><code class="inline-cell">HealEntity(int32, float32) (float32, error)</code></td><td>Restore health and return the new value.</td></tr>
+<tr><td><code class="inline">SetEntityMaterial(id, d, f, r)</code></td><td><code class="inline-cell">SetEntityMaterial(int32, *float32, *float32, *float32) error</code></td><td>Update density, friction and restitution; nil keeps a value.</td></tr>
+<tr><td><code class="inline">SetEntityBullet(id, bullet)</code></td><td><code class="inline-cell">SetEntityBullet(int32, bool) error</code></td><td>Enable continuous collision for fast bodies.</td></tr>
+<tr><td><code class="inline">SetEntityCollision(id, enabled)</code></td><td><code class="inline-cell">SetEntityCollision(int32, bool) error</code></td><td>Enable or disable collision filtering on all shapes.</td></tr>
+<tr><td><code class="inline">SetEntityAwake(id, awake)</code></td><td><code class="inline-cell">SetEntityAwake(int32, bool) error</code></td><td>Wake or sleep a body.</td></tr>
+<tr><td><code class="inline">SetEntityLinearVelocity(id, v)</code></td><td><code class="inline-cell">SetEntityLinearVelocity(int32, fsbox.Vec3) error</code></td><td>Set the linear velocity.</td></tr>
+<tr><td><code class="inline">SetGravityScale(id, scale)</code></td><td><code class="inline-cell">SetGravityScale(int32, float32) error</code></td><td>Scale gravity for one body; 0 makes it float.</td></tr>
+<tr><td><code class="inline">SetAngularVelocity(id, v)</code></td><td><code class="inline-cell">SetAngularVelocity(int32, fsbox.Vec3) error</code></td><td>Set angular velocity directly.</td></tr>
+<tr><td><code class="inline">SetMotionLocks(id, ax, ay, az)</code></td><td><code class="inline-cell">SetMotionLocks(int32, bool, bool, bool) error</code></td><td>Lock angular axes so a body cannot tip over.</td></tr>
+<tr><td><code class="inline">GetMotionLocks(id)</code></td><td><code class="inline-cell">GetMotionLocks(int32) (MotionLocks, error)</code></td><td>Read the current angular motion locks.</td></tr>
+<tr><td><code class="inline">ApplyEntityForce(id, f)</code></td><td><code class="inline-cell">ApplyEntityForce(int32, fsbox.Vec3) error</code></td><td>Apply a force at the center of mass.</td></tr>
+<tr><td><code class="inline">ApplyEntityImpulse(id, i)</code></td><td><code class="inline-cell">ApplyEntityImpulse(int32, fsbox.Vec3) error</code></td><td>Apply an impulse at the center of mass.</td></tr>
+<tr><td><code class="inline">ApplyEntityTorque(id, t)</code></td><td><code class="inline-cell">ApplyEntityTorque(int32, fsbox.Vec3) error</code></td><td>Apply a torque.</td></tr>
+<tr><td><code class="inline">ApplyEntityAngularImpulse(id, i)</code></td><td><code class="inline-cell">ApplyEntityAngularImpulse(int32, fsbox.Vec3) error</code></td><td>Apply an angular impulse.</td></tr>
+<tr><td><code class="inline">ApplyEntityForceAtPoint(id, f, p)</code></td><td><code class="inline-cell">ApplyEntityForceAtPoint(int32, fsbox.Vec3, fsbox.Vec3) error</code></td><td>Apply a force at a world point.</td></tr>
+<tr><td><code class="inline">ApplyEntityImpulseAtPoint(id, i, p)</code></td><td><code class="inline-cell">ApplyEntityImpulseAtPoint(int32, fsbox.Vec3, fsbox.Vec3) error</code></td><td>Apply an impulse at a world point.</td></tr>
+<tr><td><code class="inline">RandomColor()</code></td><td><code class="inline-cell">RandomColor() fsbox.Color</code></td><td>Get a random white-based color.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">player, <span class="s-k">_</span> := <span class="s-f">fsbox.GetPlayerInfo</span>()
+pos := <span class="s-f">fsbox.Vec3</span>{<span class="s-k">X</span>: player.Position.X, <span class="s-k">Y</span>: player.Position.Y + <span class="s-n">1</span>, <span class="s-k">Z</span>: player.Position.Z}
+id, err := <span class="s-f">fsbox.SpawnPreset</span>(<span class="s-s">"Crate"</span>, pos, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">200</span>, <span class="s-k">G</span>: <span class="s-n">200</span>, <span class="s-k">B</span>: <span class="s-n">200</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+<span class="s-k">if</span> err != <span class="s-k">nil</span> { <span class="s-f">fsbox.Log</span>(err.Error()); <span class="s-k">return</span> }
+
+info, <span class="s-k">_</span> := <span class="s-f">fsbox.GetEntity</span>(id)
+<span class="s-k">_</span> = info.Position
+
+<span class="s-k">_</span> = <span class="s-f">fsbox.SetEntityColor</span>(id, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">0</span>, <span class="s-k">B</span>: <span class="s-n">0</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+<span class="s-k">_</span> = <span class="s-f">fsbox.SetEntityModel</span>(id, modelHandle)
+
+<span class="s-c">// Launch it upward and make it unable to tip over</span>
+<span class="s-k">_</span> = <span class="s-f">fsbox.ApplyEntityImpulse</span>(id, <span class="s-f">fsbox.Vec3</span>{<span class="s-k">Y</span>: <span class="s-n">8</span>})
+<span class="s-k">_</span> = <span class="s-f">fsbox.SetMotionLocks</span>(id, <span class="s-k">true</span>, <span class="s-k">false</span>, <span class="s-k">true</span>)</code></pre>
+</div>
+</div>
+
+<div id="anims" class="tab">
+<h2>Animations</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">GetAnimations(id)</code></td><td><code class="inline-cell">GetAnimations(int32) ([]AnimationInfo, error)</code></td><td>List all animation clips on an animated entity.</td></tr>
+<tr><td><code class="inline">PlayAnimationByIndex(id, idx, speed)</code></td><td><code class="inline-cell">PlayAnimationByIndex(int32, int32, float32) error</code></td><td>Start playing a clip by index.</td></tr>
+<tr><td><code class="inline">StopAnimation(id)</code></td><td><code class="inline-cell">StopAnimation(int32) error</code></td><td>Stop the current animation.</td></tr>
+<tr><td><code class="inline">PauseAnimation(id)</code></td><td><code class="inline-cell">PauseAnimation(int32) error</code></td><td>Pause playback.</td></tr>
+<tr><td><code class="inline">ResumeAnimation(id)</code></td><td><code class="inline-cell">ResumeAnimation(int32) error</code></td><td>Resume a paused animation.</td></tr>
+<tr><td><code class="inline">SetAnimationSpeed(id, speed)</code></td><td><code class="inline-cell">SetAnimationSpeed(int32, float32) error</code></td><td>Change playback speed (1.0 = normal).</td></tr>
+<tr><td><code class="inline">SetAnimationFrame(id, frame)</code></td><td><code class="inline-cell">SetAnimationFrame(int32, float32) error</code></td><td>Jump to an exact keyframe; use with GetAnimations for clips.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">anims, <span class="s-k">_</span> := <span class="s-f">fsbox.GetAnimations</span>(entID)
+<span class="s-k">if</span> len(anims) > <span class="s-n">0</span> {
+    <span class="s-k">_</span> = <span class="s-f">fsbox.PlayAnimationByIndex</span>(entID, <span class="s-n">0</span>, <span class="s-n">1.0</span>)
+}
+<span class="s-k">_</span> = <span class="s-f">fsbox.StopAnimation</span>(entID)
+<span class="s-k">_</span> = <span class="s-f">fsbox.PauseAnimation</span>(entID)
+<span class="s-k">_</span> = <span class="s-f">fsbox.ResumeAnimation</span>(entID)
+<span class="s-k">_</span> = <span class="s-f">fsbox.SetAnimationSpeed</span>(entID, <span class="s-n">0.5</span>)</code></pre>
+</div>
+</div>
+
+<div id="player" class="tab">
+<h2>Player &amp; Camera</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">GetPlayerInfo()</code></td><td><code class="inline-cell">GetPlayerInfo() (PlayerInfo, error)</code></td><td>Read position, velocity, yaw/pitch, eye, forward and health.</td></tr>
+<tr><td><code class="inline">SetPlayerPos(pos)</code></td><td><code class="inline-cell">SetPlayerPos(fsbox.Vec3) error</code></td><td>Teleport the player.</td></tr>
+<tr><td><code class="inline">SetPlayerRot(yaw, pitch)</code></td><td><code class="inline-cell">SetPlayerRot(float32, float32) error</code></td><td>Set view angles.</td></tr>
+<tr><td><code class="inline">SetPlayerVelocity(v)</code></td><td><code class="inline-cell">SetPlayerVelocity(fsbox.Vec3) error</code></td><td>Set player velocity.</td></tr>
+<tr><td><code class="inline">SetPlayerFly(fly)</code></td><td><code class="inline-cell">SetPlayerFly(bool) error</code></td><td>Toggle flight.</td></tr>
+<tr><td><code class="inline">SetPlayerSpeedScale(s)</code></td><td><code class="inline-cell">SetPlayerSpeedScale(float32) (float32, error)</code></td><td>Scale walk speed and return the applied value.</td></tr>
+<tr><td><code class="inline">SetPlayerJumpScale(s)</code></td><td><code class="inline-cell">SetPlayerJumpScale(float32) (float32, error)</code></td><td>Scale jump strength.</td></tr>
+<tr><td><code class="inline">SetPlayerHealth(hp, max)</code></td><td><code class="inline-cell">SetPlayerHealth(float32, float32) (float32, error)</code></td><td>Set current and maximum health.</td></tr>
+<tr><td><code class="inline">DamagePlayer(amount)</code></td><td><code class="inline-cell">DamagePlayer(float32) (float32, error)</code></td><td>Damage the player and return remaining health.</td></tr>
+<tr><td><code class="inline">HealPlayer(amount)</code></td><td><code class="inline-cell">HealPlayer(float32) (float32, error)</code></td><td>Heal the player.</td></tr>
+<tr><td><code class="inline">RespawnPlayer()</code></td><td><code class="inline-cell">RespawnPlayer() error</code></td><td>Respawn at the map start.</td></tr>
+<tr><td><code class="inline">SetPlayerGravityScale(s)</code></td><td><code class="inline-cell">SetPlayerGravityScale(float32) error</code></td><td>Scale gravity for the player only.</td></tr>
+<tr><td><code class="inline">SetPlayerModel(model)</code></td><td><code class="inline-cell">SetPlayerModel(int32) error</code></td><td>Show a loaded model in third person.</td></tr>
+<tr><td><code class="inline">ClearPlayerModel()</code></td><td><code class="inline-cell">ClearPlayerModel() error</code></td><td>Remove the third-person player model.</td></tr>
+<tr><td><code class="inline">GetCamera()</code></td><td><code class="inline-cell">GetCamera() (CameraInfo, error)</code></td><td>Read camera position, target, FOV, mode and distance.</td></tr>
+<tr><td><code class="inline">SetCameraMode(mode)</code></td><td><code class="inline-cell">SetCameraMode(int32) (int32, error)</code></td><td>Select first person (0) or third person (1).</td></tr>
+<tr><td><code class="inline">SetCameraDistance(d)</code></td><td><code class="inline-cell">SetCameraDistance(float32) (float32, error)</code></td><td>Set third-person distance.</td></tr>
+<tr><td><code class="inline">SetCameraOffset(offset)</code></td><td><code class="inline-cell">SetCameraOffset(fsbox.Vec3) (fsbox.Vec3, error)</code></td><td>Offset the camera from the player.</td></tr>
+<tr><td><code class="inline">ShakeCamera(amount)</code></td><td><code class="inline-cell">ShakeCamera(float32) error</code></td><td>Add a screen shake impulse.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">p, <span class="s-k">_</span> := <span class="s-f">fsbox.GetPlayerInfo</span>()
+<span class="s-f">fsbox.Log</span>(<span class="s-s">"grounded"</span>)
+<span class="s-k">_</span> = p.Grounded
+
+<span class="s-c">// Third-person camera and a stronger jump</span>
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.SetCameraMode</span>(<span class="s-n">1</span>)
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.SetCameraDistance</span>(<span class="s-n">4.5</span>)
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.SetPlayerJumpScale</span>(<span class="s-n">1.8</span>)
+<span class="s-f">fsbox.ShakeCamera</span>(<span class="s-n">0.15</span>)
+
+cam, <span class="s-k">_</span> := <span class="s-f">fsbox.GetCamera</span>()
+<span class="s-f">fsbox.Log</span>(<span class="s-s">"camera mode"</span>)
+<span class="s-k">_</span> = cam.Mode</code></pre>
+</div>
+</div>
+
+<div id="physics" class="tab">
+<h2>Physics</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">SetWorldGravityScale(s)</code></td><td><code class="inline-cell">SetWorldGravityScale(float32) (fsbox.Vec3, error)</code></td><td>Scale world gravity and return the new vector.</td></tr>
+<tr><td><code class="inline">SetWorldGravityY(y)</code></td><td><code class="inline-cell">SetWorldGravityY(float32) (fsbox.Vec3, error)</code></td><td>Set the Y component of world gravity directly.</td></tr>
+<tr><td><code class="inline">GetGravity()</code></td><td><code class="inline-cell">GetGravity() (fsbox.Vec3, error)</code></td><td>Read the current world gravity.</td></tr>
+<tr><td><code class="inline">Raycast(origin, dir, dist, mask)</code></td><td><code class="inline-cell">Raycast(fsbox.Vec3, fsbox.Vec3, float32, *uint64) (RaycastInfo, error)</code></td><td>Cast a world ray; mask is optional.</td></tr>
+<tr><td><code class="inline">RaycastCamera(dist, mask)</code></td><td><code class="inline-cell">RaycastCamera(float32, *uint64) (RaycastInfo, error)</code></td><td>Cast from the camera along the crosshair.</td></tr>
+<tr><td><code class="inline">OverlapSphere(c, r, mask)</code></td><td><code class="inline-cell">OverlapSphere(fsbox.Vec3, float32, *uint64) ([]EntityInfo, error)</code></td><td>Find entities inside a sphere.</td></tr>
+<tr><td><code class="inline">Explode(c, r, falloff, impulse, mask)</code></td><td><code class="inline-cell">Explode(fsbox.Vec3, float32, float32, float32, *uint64) error</code></td><td>Apply a radial impulse with falloff.</td></tr>
+<tr><td><code class="inline">GetPhysicsStats()</code></td><td><code class="inline-cell">GetPhysicsStats() (PhysicsStats, error)</code></td><td>Read awake body count, total bodies and world bounds.</td></tr>
+<tr><td><code class="inline">SetWorkerCount(count)</code></td><td><code class="inline-cell">SetWorkerCount(int32) error</code></td><td>Set the physics worker thread count.</td></tr>
+<tr><td><code class="inline">CreateConstraint(desc)</code></td><td><code class="inline-cell">CreateConstraint(ConstraintDesc) (int32, error)</code></td><td>Join two entities with a weld, distance, revolute, prismatic, spherical, parallel, motor or wheel joint.</td></tr>
+<tr><td><code class="inline">RemoveConstraint(id)</code></td><td><code class="inline-cell">RemoveConstraint(int32) (bool, error)</code></td><td>Remove a joint.</td></tr>
+<tr><td><code class="inline">ListConstraints()</code></td><td><code class="inline-cell">ListConstraints() ([]ConstraintInfo, error)</code></td><td>List active joints.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">hit, <span class="s-k">_</span> := <span class="s-f">fsbox.RaycastCamera</span>(<span class="s-n">50</span>, <span class="s-k">nil</span>)
+<span class="s-k">if</span> hit.Hit {
+    <span class="s-f">fsbox.Log</span>(<span class="s-s">"hit entity"</span>)
+    <span class="s-k">_</span> = hit.EntityID
+}
+
+<span class="s-c">// Lift everything nearby</span>
+<span class="s-f">fsbox.Explode</span>(<span class="s-f">fsbox.Vec3</span>{<span class="s-k">Y</span>: <span class="s-n">1</span>}, <span class="s-n">6</span>, <span class="s-n">1</span>, <span class="s-n">40</span>, <span class="s-k">nil</span>)
+
+<span class="s-c">// Weld two props together</span>
+<span class="s-k">var</span> a, b int32 = <span class="s-n">10</span>, <span class="s-n">11</span>
+id, err := <span class="s-f">fsbox.CreateConstraint</span>(<span class="s-f">fsbox.ConstraintDesc</span>{<span class="s-k">Type</span>: <span class="s-s">"weld"</span>, <span class="s-k">A</span>: a, <span class="s-k">B</span>: b})
+<span class="s-k">if</span> err == <span class="s-k">nil</span> { <span class="s-k">_</span> = <span class="s-f">fsbox.RemoveConstraint</span>(id) }</code></pre>
+</div>
+</div>
+
+<div id="particles" class="tab">
+<h2>Particles</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">SpawnParticle(pos, vel, color, size, life, gravity)</code></td><td><code class="inline-cell">SpawnParticle(fsbox.Vec3, fsbox.Vec3, fsbox.Color, float32, float32, float32) (int32, error)</code></td><td>Spawn one particle and return its id.</td></tr>
+<tr><td><code class="inline">ParticleBurst(pos, color, count, speed, life, size, gravity)</code></td><td><code class="inline-cell">ParticleBurst(fsbox.Vec3, fsbox.Color, int32, float32, float32, float32, float32) (int32, error)</code></td><td>Spawn a radial burst and return the count.</td></tr>
+<tr><td><code class="inline">ClearParticles()</code></td><td><code class="inline-cell">ClearParticles() error</code></td><td>Remove every live particle.</td></tr>
+<tr><td><code class="inline">ParticleCount()</code></td><td><code class="inline-cell">ParticleCount() (int, error)</code></td><td>Number of live particles.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">spark := <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">170</span>, <span class="s-k">B</span>: <span class="s-n">40</span>, <span class="s-k">A</span>: <span class="s-n">255</span>}
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.ParticleBurst</span>(<span class="s-f">fsbox.Vec3</span>{<span class="s-k">X</span>: <span class="s-n">1</span>, <span class="s-k">Y</span>: <span class="s-n">2</span>, <span class="s-k">Z</span>: <span class="s-n">3</span>}, spark, <span class="s-n">24</span>, <span class="s-n">4</span>, <span class="s-n">0.8</span>, <span class="s-n">0.06</span>, <span class="s-n">1</span>)
+n, <span class="s-k">_</span> := <span class="s-f">fsbox.ParticleCount</span>()
+<span class="s-k">_</span> = n
+<span class="s-f">fsbox.ClearParticles</span>()</code></pre>
+</div>
+</div>
+
+<div id="weapons" class="tab">
+<h2>Weapons &amp; Tools</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">RegisterWeapon(desc)</code></td><td><code class="inline-cell">RegisterWeapon(WeaponDesc) (int32, error)</code></td><td>Register a hitscan or projectile weapon.</td></tr>
+<tr><td><code class="inline">UnregisterWeapon(id)</code></td><td><code class="inline-cell">UnregisterWeapon(int32) (bool, error)</code></td><td>Remove a weapon.</td></tr>
+<tr><td><code class="inline">ListWeapons()</code></td><td><code class="inline-cell">ListWeapons() ([]WeaponInfo, error)</code></td><td>List registered weapons.</td></tr>
+<tr><td><code class="inline">SelectWeapon(id)</code></td><td><code class="inline-cell">SelectWeapon(int32) error</code></td><td>Equip a weapon.</td></tr>
+<tr><td><code class="inline">GetActiveWeapon()</code></td><td><code class="inline-cell">GetActiveWeapon() (*WeaponInfo, error)</code></td><td>Read the equipped weapon, or nil.</td></tr>
+<tr><td><code class="inline">FireWeapon(id)</code></td><td><code class="inline-cell">FireWeapon(int32) (WeaponFireResult, error)</code></td><td>Fire id, or the active weapon when id is 0.</td></tr>
+<tr><td><code class="inline">SetWeaponAmmo(id, ammo)</code></td><td><code class="inline-cell">SetWeaponAmmo(int32, int32) (int32, error)</code></td><td>Set magazine ammo.</td></tr>
+<tr><td><code class="inline">AddWeaponAmmo(id, amount)</code></td><td><code class="inline-cell">AddWeaponAmmo(int32, int32) (int32, error)</code></td><td>Add or subtract ammo.</td></tr>
+<tr><td><code class="inline">GetWeaponAmmo(id)</code></td><td><code class="inline-cell">GetWeaponAmmo(int32) (int32, error)</code></td><td>Read magazine ammo.</td></tr>
+<tr><td><code class="inline">RegisterTool(desc)</code></td><td><code class="inline-cell">RegisterTool(ToolDesc) (int32, error)</code></td><td>Register a tool with primary/secondary/reload hooks.</td></tr>
+<tr><td><code class="inline">UnregisterTool(id)</code></td><td><code class="inline-cell">UnregisterTool(int32) (bool, error)</code></td><td>Remove a tool.</td></tr>
+<tr><td><code class="inline">ListTools()</code></td><td><code class="inline-cell">ListTools() ([]ToolInfo, error)</code></td><td>List registered tools.</td></tr>
+<tr><td><code class="inline">SelectTool(id)</code></td><td><code class="inline-cell">SelectTool(int32) error</code></td><td>Equip a tool.</td></tr>
+<tr><td><code class="inline">GetActiveTool()</code></td><td><code class="inline-cell">GetActiveTool() (*ToolInfo, error)</code></td><td>Read the equipped tool, or nil.</td></tr>
+<tr><td><code class="inline">ToolPrimary(id)</code></td><td><code class="inline-cell">ToolPrimary(int32) error</code></td><td>Run the primary action.</td></tr>
+<tr><td><code class="inline">ToolSecondary(id)</code></td><td><code class="inline-cell">ToolSecondary(int32) error</code></td><td>Run the secondary action.</td></tr>
+<tr><td><code class="inline">ToolReload(id)</code></td><td><code class="inline-cell">ToolReload(int32) error</code></td><td>Run the reload action.</td></tr>
+<tr><td><code class="inline">SetToolViewModel(color)</code></td><td><code class="inline-cell">SetToolViewModel(fsbox.Color) error</code></td><td>Tint the procedural tool gun.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go"><span class="s-c">// A simple projectile weapon</span>
+id, err := <span class="s-f">fsbox.RegisterWeapon</span>(<span class="s-f">fsbox.WeaponDesc</span>{
+    <span class="s-k">Name</span>: <span class="s-s">"Pulse"</span>, <span class="s-k">Type</span>: <span class="s-s">"projectile"</span>,
+    <span class="s-k">Damage</span>: <span class="s-n">25</span>, <span class="s-k">FireRate</span>: <span class="s-n">0.25</span>, <span class="s-k">Ammo</span>: <span class="s-n">30</span>, <span class="s-k">MaxAmmo</span>: <span class="s-n">30</span>,
+    <span class="s-k">ProjectileSpeed</span>: <span class="s-n">40</span>, <span class="s-k">ProjectileLife</span>: <span class="s-n">3</span>, <span class="s-k">ProjectileSize</span>: <span class="s-n">0.1</span>,
+})
+<span class="s-k">if</span> err != <span class="s-k">nil</span> { <span class="s-f">fsbox.Log</span>(err.Error()) }
+<span class="s-f">fsbox.SelectWeapon</span>(id)
+res, <span class="s-k">_</span> := <span class="s-f">fsbox.FireWeapon</span>(<span class="s-n">0</span>)
+<span class="s-k">_</span> = res.Ammo
+
+<span class="s-c">// A tool with hooks</span>
+<span class="s-f">fsbox.RegisterTool</span>(<span class="s-f">fsbox.ToolDesc</span>{
+    <span class="s-k">Name</span>: <span class="s-s">"Painter"</span>, <span class="s-k">PrimaryDesc</span>: <span class="s-s">"Paint"</span>,
+    <span class="s-k">PrimaryHook</span>: <span class="s-s">"paint.primary"</span>,
+})
+<span class="s-f">fsbox.On</span>(<span class="s-s">"paint.primary"</span>, <span class="s-k">func</span>(e <span class="s-f">fsbox.Event</span>) { <span class="s-f">fsbox.Toast</span>(<span class="s-s">"painted"</span>, <span class="s-f">fsbox.Color</span>{<span class="s-k">A</span>: <span class="s-n">255</span>}) })</code></pre>
+</div>
+</div>
+
+<div id="world" class="tab">
+<h2>World &amp; Settings</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">SetSun(direction)</code></td><td><code class="inline-cell">SetSun(fsbox.Vec3) (fsbox.Vec3, error)</code></td><td>Move the sun and return the applied direction.</td></tr>
+<tr><td><code class="inline">GetSun()</code></td><td><code class="inline-cell">GetSun() (fsbox.Vec3, error)</code></td><td>Read the sun direction.</td></tr>
+<tr><td><code class="inline">SetSky(top, bottom)</code></td><td><code class="inline-cell">SetSky(*fsbox.Color, *fsbox.Color) (SkyInfo, error)</code></td><td>Set sky gradient colors; nil keeps a color.</td></tr>
+<tr><td><code class="inline">GetWorldTime()</code></td><td><code class="inline-cell">GetWorldTime() (float64, error)</code></td><td>Read elapsed world time.</td></tr>
+<tr><td><code class="inline">SetWorldTimeScale(s)</code></td><td><code class="inline-cell">SetWorldTimeScale(float32) (float64, error)</code></td><td>Scale world time.</td></tr>
+<tr><td><code class="inline">PauseWorld() / ResumeWorld()</code></td><td><code class="inline-cell">PauseWorld() error / ResumeWorld() error</code></td><td>Freeze or resume simulation without the menu.</td></tr>
+<tr><td><code class="inline">SaveWorld() / LoadWorld()</code></td><td><code class="inline-cell">SaveWorld() error / LoadWorld() error</code></td><td>Write or restore the world.</td></tr>
+<tr><td><code class="inline">GetSettings()</code></td><td><code class="inline-cell">GetSettings() (SettingsInfo, error)</code></td><td>Read gravity, sensitivity, FOV, UI scale, shadows and more.</td></tr>
+<tr><td><code class="inline">SetSettings(update)</code></td><td><code class="inline-cell">SetSettings(SettingsUpdate) (SettingsInfo, error)</code></td><td>Update only the fields set to non-nil pointers.</td></tr>
+<tr><td><code class="inline">SaveSettings()</code></td><td><code class="inline-cell">SaveSettings() error</code></td><td>Persist settings to disk.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go"><span class="s-c">// Warm sunset</span>
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.SetSky</span>(
+    &amp;<span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">40</span>, <span class="s-k">G</span>: <span class="s-n">60</span>, <span class="s-k">B</span>: <span class="s-n">120</span>, <span class="s-k">A</span>: <span class="s-n">255</span>},
+    &amp;<span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">240</span>, <span class="s-k">G</span>: <span class="s-n">140</span>, <span class="s-k">B</span>: <span class="s-n">70</span>, <span class="s-k">A</span>: <span class="s-n">255</span>},
+)
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.SetSun</span>(<span class="s-f">fsbox.Vec3</span>{<span class="s-k">X</span>: <span class="s-n">-0.4</span>, <span class="s-k">Y</span>: <span class="s-n">-1</span>, <span class="s-k">Z</span>: <span class="s-n">0.2</span>})
+
+<span class="s-c">// Turn shadows on and raise the FOV</span>
+fov := <span class="s-t">float32</span>(<span class="s-n">80</span>)
+shadows := <span class="s-k">true</span>
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.SetSettings</span>(<span class="s-f">fsbox.SettingsUpdate</span>{<span class="s-k">FOV</span>: &amp;fov, <span class="s-k">Shadows</span>: &amp;shadows})
+<span class="s-f">fsbox.SaveSettings</span>()</code></pre>
+</div>
+</div>
+
+<div id="ui" class="tab">
+<h2>Screen UI</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">AddButton(x,y,w,h,label,color)</code></td><td><code class="inline-cell">AddButton(float32,float32,float32,float32,string,fsbox.Color) (int32, error)</code></td><td>Add a screen-space button.</td></tr>
+<tr><td><code class="inline">AddPanel(x,y,w,h,color)</code></td><td><code class="inline-cell">AddPanel(float32,float32,float32,float32,fsbox.Color) (int32, error)</code></td><td>Add a screen-space panel.</td></tr>
+<tr><td><code class="inline">AddSlider(x,y,w,h,min,max,value,color)</code></td><td><code class="inline-cell">AddSlider(float32,float32,float32,float32,float32,float32,float32,fsbox.Color) (int32, error)</code></td><td>Add a screen-space slider.</td></tr>
+<tr><td><code class="inline">RemoveUIElement(id)</code></td><td><code class="inline-cell">RemoveUIElement(int32) error</code></td><td>Remove a screen UI element.</td></tr>
+<tr><td><code class="inline">SetUIElement(id,x,y,w,h,label,color,value)</code></td><td><code class="inline-cell">SetUIElement(int32,*float32,*float32,*float32,*float32,*string,*fsbox.Color,*float32) error</code></td><td>Update fields of a UI element; pass nil to skip a field.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">btn, <span class="s-k">_</span> := <span class="s-f">fsbox.AddButton</span>(<span class="s-n">100</span>, <span class="s-n">100</span>, <span class="s-n">120</span>, <span class="s-n">30</span>, <span class="s-s">"Spawn"</span>, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+pan, <span class="s-k">_</span> := <span class="s-f">fsbox.AddPanel</span>(<span class="s-n">20</span>, <span class="s-n">20</span>, <span class="s-n">300</span>, <span class="s-n">200</span>, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">23</span>, <span class="s-k">G</span>: <span class="s-n">25</span>, <span class="s-k">B</span>: <span class="s-n">28</span>, <span class="s-k">A</span>: <span class="s-n">246</span>})
+sld, <span class="s-k">_</span> := <span class="s-f">fsbox.AddSlider</span>(<span class="s-n">20</span>, <span class="s-n">240</span>, <span class="s-n">200</span>, <span class="s-n">20</span>, <span class="s-n">0</span>, <span class="s-n">100</span>, <span class="s-n">50</span>, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+
+<span class="s-k">_</span> = <span class="s-f">fsbox.RemoveUIElement</span>(btn)
+
+<span class="s-k">var</span> nx float32 = <span class="s-n">300</span>
+<span class="s-f">fsbox.SetUIElement</span>(btn, <span class="s-k">&amp;</span>nx, <span class="s-k">nil</span>, <span class="s-k">nil</span>, <span class="s-k">nil</span>, <span class="s-k">nil</span>, <span class="s-k">nil</span>, <span class="s-k">nil</span>)</code></pre>
+</div>
+</div>
+
+<div id="render" class="tab">
+<h2>Render &amp; Drawing</h2>
+<div class="callout info">
+Debug drawing calls last for one frame and are cleared automatically. Screen-space drawing uses pixel coordinates from the top-left corner.
+</div>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">DrawLine3D(from, to, color, t)</code></td><td><code class="inline-cell">DrawLine3D(fsbox.Vec3, fsbox.Vec3, fsbox.Color, float32) error</code></td><td>Draw a world-space line.</td></tr>
+<tr><td><code class="inline">DrawBox3D(center, size, color)</code></td><td><code class="inline-cell">DrawBox3D(fsbox.Vec3, fsbox.Vec3, fsbox.Color) error</code></td><td>Draw a wireframe box.</td></tr>
+<tr><td><code class="inline">DrawSphere3D(c, r, color, wire, seg)</code></td><td><code class="inline-cell">DrawSphere3D(fsbox.Vec3, float32, fsbox.Color, bool, int32) error</code></td><td>Draw a solid or wire sphere.</td></tr>
+<tr><td><code class="inline">DrawRay3D(origin, dir, len, color)</code></td><td><code class="inline-cell">DrawRay3D(fsbox.Vec3, fsbox.Vec3, float32, fsbox.Color) error</code></td><td>Draw a ray for debugging.</td></tr>
+<tr><td><code class="inline">DrawCircle3D(c, n, r, color, seg)</code></td><td><code class="inline-cell">DrawCircle3D(fsbox.Vec3, fsbox.Vec3, float32, fsbox.Color, int32) error</code></td><td>Draw a world-space circle.</td></tr>
+<tr><td><code class="inline">ClearDebugDraw()</code></td><td><code class="inline-cell">ClearDebugDraw() error</code></td><td>Clear debug primitives early.</td></tr>
+<tr><td><code class="inline">WorldToScreen(pos)</code></td><td><code class="inline-cell">WorldToScreen(fsbox.Vec3) (fsbox.Vec2, error)</code></td><td>Project a world point into screen pixels.</td></tr>
+<tr><td><code class="inline">ScreenToWorldRay(x, y)</code></td><td><code class="inline-cell">ScreenToWorldRay(float32, float32) (fsbox.Ray, error)</code></td><td>Build a world ray from a screen point.</td></tr>
+<tr><td><code class="inline">SetFOV(fov)</code></td><td><code class="inline-cell">SetFOV(float32) (float32, error)</code></td><td>Change the camera field of view.</td></tr>
+<tr><td><code class="inline">SetShadows(enabled)</code></td><td><code class="inline-cell">SetShadows(bool) error</code></td><td>Toggle shadow rendering.</td></tr>
+<tr><td><code class="inline">GetScreenSize()</code></td><td><code class="inline-cell">GetScreenSize() (int32, int32, error)</code></td><td>Read the framebuffer size in pixels.</td></tr>
+<tr><td><code class="inline">DrawText(text, x, y, size, spacing, c)</code></td><td><code class="inline-cell">DrawText(string, float32, float32, float32, float32, fsbox.Color) error</code></td><td>Draw screen text.</td></tr>
+<tr><td><code class="inline">DrawRect(x, y, w, h, c, filled, t)</code></td><td><code class="inline-cell">DrawRect(float32, float32, float32, float32, fsbox.Color, bool, float32) error</code></td><td>Draw a filled or outlined rectangle.</td></tr>
+<tr><td><code class="inline">DrawLine(x0, y0, x1, y1, t, c)</code></td><td><code class="inline-cell">DrawLine(float32, float32, float32, float32, float32, fsbox.Color) error</code></td><td>Draw a screen-space line.</td></tr>
+<tr><td><code class="inline">DrawCircle(x, y, r, c, filled, t, seg)</code></td><td><code class="inline-cell">DrawCircle(float32, float32, float32, fsbox.Color, bool, float32, int32) error</code></td><td>Draw a screen-space circle.</td></tr>
+<tr><td><code class="inline">DrawTriangle(x0, y0, x1, y1, x2, y2, c)</code></td><td><code class="inline-cell">DrawTriangle(float32, float32, float32, float32, float32, float32, fsbox.Color) error</code></td><td>Draw a screen-space triangle.</td></tr>
+<tr><td><code class="inline">MeasureText(text, size, spacing)</code></td><td><code class="inline-cell">MeasureText(string, float32, float32) (float32, error)</code></td><td>Measure text width before drawing.</td></tr>
+<tr><td><code class="inline">GetUIScreenSize()</code></td><td><code class="inline-cell">GetUIScreenSize() (float32, float32, error)</code></td><td>Read the UI canvas size.</td></tr>
+<tr><td><code class="inline">ClearDraw()</code></td><td><code class="inline-cell">ClearDraw() error</code></td><td>Clear this frame's screen drawing.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">white := <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>}
+<span class="s-f">fsbox.DrawBox3D</span>(<span class="s-f">fsbox.Vec3</span>{<span class="s-k">Y</span>: <span class="s-n">1</span>}, <span class="s-f">fsbox.Vec3</span>{<span class="s-k">X</span>: <span class="s-n">1</span>, <span class="s-k">Y</span>: <span class="s-n">1</span>, <span class="s-k">Z</span>: <span class="s-n">1</span>}, white)
+<span class="s-f">fsbox.DrawText</span>(<span class="s-s">"HELLO"</span>, <span class="s-n">20</span>, <span class="s-n">20</span>, <span class="s-n">20</span>, <span class="s-n">1</span>, white)
+
+screen, <span class="s-k">_</span> := <span class="s-f">fsbox.WorldToScreen</span>(<span class="s-f">fsbox.Vec3</span>{<span class="s-k">Y</span>: <span class="s-n">1</span>})
+<span class="s-f">fsbox.DrawRect</span>(screen.X - <span class="s-n">4</span>, screen.Y - <span class="s-n">4</span>, <span class="s-n">8</span>, <span class="s-n">8</span>, white, <span class="s-k">true</span>, <span class="s-n">0</span>)
+
+w, <span class="s-k">_</span> := <span class="s-f">fsbox.GetScreenSize</span>()
+<span class="s-k">_</span> = w</code></pre>
+</div>
+</div>
+
+<div id="billboards" class="tab">
+<h2>World-space Billboards</h2>
+<div class="callout info">
+Billboards are world-space panels that always face the camera. Use them for floating labels, health bars, or in-world menus beside entities.
+</div>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">AddBillboardPanel(x,y,z,w,h)</code></td><td><code class="inline-cell">AddBillboardPanel(float32,float32,float32,float32,float32) (int32, error)</code></td><td>Create a world-space panel that always faces the camera.</td></tr>
+<tr><td><code class="inline">AddBillboardButton(panel,x,y,w,h,label,color)</code></td><td><code class="inline-cell">AddBillboardButton(int32,float32,float32,float32,float32,string,fsbox.Color) (int32, error)</code></td><td>Add a button to a billboard panel.</td></tr>
+<tr><td><code class="inline">AddBillboardButtonColored(panel,x,y,w,h,label,bg,text)</code></td><td><code class="inline-cell">AddBillboardButtonColored(int32,float32,float32,float32,float32,string,fsbox.Color,fsbox.Color) (int32, error)</code></td><td>Button with separate background and text colors.</td></tr>
+<tr><td><code class="inline">AddBillboardButtonStyled(panel,x,y,w,h,label,bg,text,size)</code></td><td><code class="inline-cell">AddBillboardButtonStyled(int32,float32,float32,float32,float32,string,fsbox.Color,fsbox.Color,float32) (int32, error)</code></td><td>Button with screen-pixel text size (0 = default).</td></tr>
+<tr><td><code class="inline">AddBillboardButtonWorld(panel,x,y,w,h,label,bg,text,worldHeight)</code></td><td><code class="inline-cell">AddBillboardButtonWorld(int32,float32,float32,float32,float32,string,fsbox.Color,fsbox.Color,float32) (int32, error)</code></td><td>Button with world-space text height (scales with distance).</td></tr>
+<tr><td><code class="inline">AddBillboardText(panel,x,y,label,size,color)</code></td><td><code class="inline-cell">AddBillboardText(int32,float32,float32,string,float32,fsbox.Color) (int32, error)</code></td><td>Add text with screen-pixel size.</td></tr>
+<tr><td><code class="inline">AddBillboardTextWorld(panel,x,y,label,worldHeight,color)</code></td><td><code class="inline-cell">AddBillboardTextWorld(int32,float32,float32,string,float32,fsbox.Color) (int32, error)</code></td><td>Add text with world-space height (scales with distance).</td></tr>
+<tr><td><code class="inline">RemoveBillboardPanel(panel)</code></td><td><code class="inline-cell">RemoveBillboardPanel(int32) error</code></td><td>Remove an entire billboard panel and its children.</td></tr>
+<tr><td><code class="inline">MoveBillboardPanel(panel,x,y,z)</code></td><td><code class="inline-cell">MoveBillboardPanel(int32,float32,float32,float32) error</code></td><td>Move a panel in world space.</td></tr>
+<tr><td><code class="inline">ClearBillboardPanels()</code></td><td><code class="inline-cell">ClearBillboardPanels() error</code></td><td>Remove all billboards.</td></tr>
+<tr><td><code class="inline">UpdateBillboardElement(elementID, update)</code></td><td><code class="inline-cell">UpdateBillboardElement(int32, fsbox.BillboardElementUpdate) error</code></td><td>Partially update a button/text; only non-nil fields change.</td></tr>
+<tr><td><code class="inline">GetBillboardHover()</code></td><td><code class="inline-cell">GetBillboardHover() (BillboardHover, error)</code></td><td>Get panel and element under the crosshair.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">panel, <span class="s-k">_</span> := <span class="s-f">fsbox.AddBillboardPanel</span>(<span class="s-n">0</span>, <span class="s-n">2</span>, <span class="s-n">0</span>, <span class="s-n">2.5</span>, <span class="s-n">1.5</span>)
+btn, <span class="s-k">_</span> := <span class="s-f">fsbox.AddBillboardButton</span>(panel, <span class="s-n">-1</span>, <span class="s-n">-0.5</span>, <span class="s-n">0.8</span>, <span class="s-n">0.25</span>, <span class="s-s">"PLAY"</span>, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.AddBillboardTextWorld</span>(panel, <span class="s-n">0</span>, <span class="s-n">0.8</span>, <span class="s-s">"MY OBJECT"</span>, <span class="s-n">0.15</span>, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+
+<span class="s-c">// update button text later</span>
+<span class="s-k">var</span> newLabel <span class="s-t">string</span> = <span class="s-s">"STOP"</span>
+<span class="s-f">fsbox.UpdateBillboardElement</span>(btn, <span class="s-f">fsbox.BillboardElementUpdate</span>{<span class="s-k">Label</span>: <span class="s-k">&amp;</span>newLabel})
+
+<span class="s-c">// hover detection</span>
+hover, <span class="s-k">_</span> := <span class="s-f">fsbox.GetBillboardHover</span>()
+<span class="s-k">if</span> hover.Panel == panel { <span class="s-c">/* crosshair over our panel */</span> }
+
+<span class="s-c">// move panel</span>
+<span class="s-f">fsbox.MoveBillboardPanel</span>(panel, <span class="s-n">3</span>, <span class="s-n">2</span>, <span class="s-n">5</span>)
+<span class="s-f">fsbox.RemoveBillboardPanel</span>(panel)
+<span class="s-f">fsbox.ClearBillboardPanels</span>()</code></pre>
+</div>
+</div>
+
+<div id="audio" class="tab">
+<h2>Audio</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">LoadSound(name,path)</code></td><td><code class="inline-cell">LoadSound(string, string) error</code></td><td>Load a 2D sound effect.</td></tr>
+<tr><td><code class="inline">PlaySound(name)</code></td><td><code class="inline-cell">PlaySound(string) error</code></td><td>Play a loaded 2D sound.</td></tr>
+<tr><td><code class="inline">PlaySound3D(name,pos,vol,maxDist)</code></td><td><code class="inline-cell">PlaySound3D(string, fsbox.Vec3, float32, float32) error</code></td><td>Play a 3D-positioned sound.</td></tr>
+<tr><td><code class="inline">StopSound(name)</code></td><td><code class="inline-cell">StopSound(string) error</code></td><td>Stop a sound.</td></tr>
+<tr><td><code class="inline">LoadMusic(name,path)</code></td><td><code class="inline-cell">LoadMusic(string, string) error</code></td><td>Load a music track.</td></tr>
+<tr><td><code class="inline">PlayMusic(name,vol)</code></td><td><code class="inline-cell">PlayMusic(string, float32) error</code></td><td>Play music.</td></tr>
+<tr><td><code class="inline">StopMusic(name)</code></td><td><code class="inline-cell">StopMusic(string) error</code></td><td>Stop music.</td></tr>
+<tr><td><code class="inline">SetMusicVolume(name,vol)</code></td><td><code class="inline-cell">SetMusicVolume(string, float32) error</code></td><td>Set music volume.</td></tr>
+<tr><td><code class="inline">AudioReady()</code></td><td><code class="inline-cell">AudioReady() (bool, error)</code></td><td>Check if audio subsystem is initialized.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">_</span> = <span class="s-f">fsbox.LoadSound</span>(<span class="s-s">"hit"</span>, <span class="s-s">"hit.wav"</span>)
+<span class="s-k">_</span> = <span class="s-f">fsbox.PlaySound</span>(<span class="s-s">"hit"</span>)
+
+pos := <span class="s-f">fsbox.Vec3</span>{<span class="s-k">X</span>: <span class="s-n">0</span>, <span class="s-k">Y</span>: <span class="s-n">1</span>, <span class="s-k">Z</span>: <span class="s-n">5</span>}
+<span class="s-k">_</span> = <span class="s-f">fsbox.PlaySound3D</span>(<span class="s-s">"step"</span>, pos, <span class="s-n">1.0</span>, <span class="s-n">15.0</span>)
+<span class="s-k">_</span> = <span class="s-f">fsbox.StopSound</span>(<span class="s-s">"step"</span>)
+
+<span class="s-k">_</span> = <span class="s-f">fsbox.LoadMusic</span>(<span class="s-s">"bgm"</span>, <span class="s-s">"bgm.ogg"</span>)
+<span class="s-k">_</span> = <span class="s-f">fsbox.PlayMusic</span>(<span class="s-s">"bgm"</span>, <span class="s-n">0.5</span>)
+<span class="s-k">_</span> = <span class="s-f">fsbox.SetMusicVolume</span>(<span class="s-s">"bgm"</span>, <span class="s-n">0.3</span>)
+<span class="s-k">_</span> = <span class="s-f">fsbox.StopMusic</span>(<span class="s-s">"bgm"</span>)
+
+ready, <span class="s-k">_</span> := <span class="s-f">fsbox.AudioReady</span>()
+<span class="s-k">_</span> = ready</code></pre>
+</div>
+</div>
+
+<div id="input" class="tab">
+<h2>Input</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">InputKeyPressed(key)</code></td><td><code class="inline-cell">InputKeyPressed(int32) (bool, error)</code></td><td>True if key was pressed this frame.</td></tr>
+<tr><td><code class="inline">InputKeyDown(key)</code></td><td><code class="inline-cell">InputKeyDown(int32) (bool, error)</code></td><td>True if key is held down.</td></tr>
+<tr><td><code class="inline">InputKeyReleased(key)</code></td><td><code class="inline-cell">InputKeyReleased(int32) (bool, error)</code></td><td>True if key was released this frame.</td></tr>
+<tr><td><code class="inline">InputMouseButtonPressed(btn)</code></td><td><code class="inline-cell">InputMouseButtonPressed(int32) (bool, error)</code></td><td>True if mouse button pressed this frame.</td></tr>
+<tr><td><code class="inline">InputMouseButtonDown(btn)</code></td><td><code class="inline-cell">InputMouseButtonDown(int32) (bool, error)</code></td><td>True if mouse button held.</td></tr>
+<tr><td><code class="inline">InputMouseButtonReleased(btn)</code></td><td><code class="inline-cell">InputMouseButtonReleased(int32) (bool, error)</code></td><td>True if mouse button released this frame.</td></tr>
+<tr><td><code class="inline">InputWheel()</code></td><td><code class="inline-cell">InputWheel() (float32, error)</code></td><td>Mouse wheel scroll delta.</td></tr>
+</table>
+<h3>Keyboard constants</h3>
+<table class="api">
+<tr><th>Constant</th><th>Value</th><th>Constant</th><th>Value</th></tr>
+<tr><td>KeyNull</td><td>0</td><td>KeySpace</td><td>32</td></tr>
+<tr><td>KeyApostrophe</td><td>39</td><td>KeyEscape</td><td>256</td></tr>
+<tr><td>KeyComma</td><td>44</td><td>KeyEnter</td><td>257</td></tr>
+<tr><td>KeyMinus</td><td>45</td><td>KeyTab</td><td>258</td></tr>
+<tr><td>KeyPeriod</td><td>46</td><td>KeyBackspace</td><td>259</td></tr>
+<tr><td>KeySlash</td><td>47</td><td>KeyInsert</td><td>260</td></tr>
+<tr><td>Key0</td><td>48</td><td>KeyDelete</td><td>261</td></tr>
+<tr><td>Key1</td><td>49</td><td>KeyRight</td><td>262</td></tr>
+<tr><td>Key2</td><td>50</td><td>KeyLeft</td><td>263</td></tr>
+<tr><td>Key3</td><td>51</td><td>KeyDown</td><td>264</td></tr>
+<tr><td>Key4</td><td>52</td><td>KeyUp</td><td>265</td></tr>
+<tr><td>Key5</td><td>53</td><td>KeyPageUp</td><td>266</td></tr>
+<tr><td>Key6</td><td>54</td><td>KeyPageDown</td><td>267</td></tr>
+<tr><td>Key7</td><td>55</td><td>KeyHome</td><td>268</td></tr>
+<tr><td>Key8</td><td>56</td><td>KeyEnd</td><td>269</td></tr>
+<tr><td>Key9</td><td>57</td><td>KeyCapsLock</td><td>280</td></tr>
+<tr><td>KeySemicolon</td><td>59</td><td>KeyScrollLock</td><td>281</td></tr>
+<tr><td>KeyEqual</td><td>61</td><td>KeyNumLock</td><td>282</td></tr>
+<tr><td>KeyA..KeyZ</td><td>65..90</td><td>KeyPrintScreen</td><td>283</td></tr>
+<tr><td>KeyLeftBracket</td><td>91</td><td>KeyPause</td><td>284</td></tr>
+<tr><td>KeyBackslash</td><td>92</td><td>KeyF1..KeyF12</td><td>290..301</td></tr>
+<tr><td>KeyRightBracket</td><td>93</td><td>KeyLeftShift</td><td>340</td></tr>
+<tr><td>KeyGrave</td><td>96</td><td>KeyLeftControl</td><td>341</td></tr>
+<tr><td></td><td></td><td>KeyLeftAlt</td><td>342</td></tr>
+<tr><td></td><td></td><td>KeyLeftSuper</td><td>343</td></tr>
+<tr><td></td><td></td><td>KeyRightShift</td><td>344</td></tr>
+<tr><td></td><td></td><td>KeyRightControl</td><td>345</td></tr>
+<tr><td></td><td></td><td>KeyRightAlt</td><td>346</td></tr>
+<tr><td></td><td></td><td>KeyRightSuper</td><td>347</td></tr>
+<tr><td></td><td></td><td>KeyMenu</td><td>348</td></tr>
+</table>
+<h3>Mouse constants</h3>
+<table class="api">
+<tr><th>Constant</th><th>Value</th></tr>
+<tr><td>MouseButtonLeft</td><td>0</td></tr>
+<tr><td>MouseButtonRight</td><td>1</td></tr>
+<tr><td>MouseButtonMiddle</td><td>2</td></tr>
+<tr><td>MouseButtonSide</td><td>3</td></tr>
+<tr><td>MouseButtonExtra</td><td>4</td></tr>
+<tr><td>MouseButtonForward</td><td>5</td></tr>
+<tr><td>MouseButtonBack</td><td>6</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">pressed, <span class="s-k">_</span> := <span class="s-f">fsbox.InputKeyPressed</span>(<span class="s-f">fsbox.KeyE</span>)
+down, <span class="s-k">_</span> := <span class="s-f">fsbox.InputKeyDown</span>(<span class="s-f">fsbox.KeyH</span>)
+released, <span class="s-k">_</span> := <span class="s-f">fsbox.InputKeyReleased</span>(<span class="s-f">fsbox.KeySpace</span>)
+
+mb, <span class="s-k">_</span> := <span class="s-f">fsbox.InputMouseButtonPressed</span>(<span class="s-f">fsbox.MouseButtonLeft</span>)
+held, <span class="s-k">_</span> := <span class="s-f">fsbox.InputMouseButtonDown</span>(<span class="s-f">fsbox.MouseButtonRight</span>)
+rel, <span class="s-k">_</span> := <span class="s-f">fsbox.InputMouseButtonReleased</span>(<span class="s-f">fsbox.MouseButtonMiddle</span>)
+
+wheel, <span class="s-k">_</span> := <span class="s-f">fsbox.InputWheel</span>()
+
+<span class="s-k">if</span> pressed { <span class="s-f">fsbox.Log</span>(<span class="s-s">"E pressed"</span>) }</code></pre>
+</div>
+</div>
+
+<div id="config" class="tab">
+<h2>Config / Storage</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">ConfigRead(path)</code></td><td><code class="inline-cell">ConfigRead(string) (string, error)</code></td><td>Read a text file relative to mod root.</td></tr>
+<tr><td><code class="inline">ConfigWrite(path, content)</code></td><td><code class="inline-cell">ConfigWrite(string, string) error</code></td><td>Write a text file relative to mod root.</td></tr>
+<tr><td><code class="inline">ConfigAppend(path, content)</code></td><td><code class="inline-cell">ConfigAppend(string, string) error</code></td><td>Append text to a file.</td></tr>
+<tr><td><code class="inline">ConfigExists(path)</code></td><td><code class="inline-cell">ConfigExists(string) (bool, error)</code></td><td>Check if a path exists.</td></tr>
+<tr><td><code class="inline">ConfigDelete(path)</code></td><td><code class="inline-cell">ConfigDelete(string) error</code></td><td>Delete a file or directory.</td></tr>
+<tr><td><code class="inline">ConfigList(path)</code></td><td><code class="inline-cell">ConfigList(string) ([]string, error)</code></td><td>List files in a directory.</td></tr>
+<tr><td><code class="inline">ConfigMkdir(path)</code></td><td><code class="inline-cell">ConfigMkdir(string) error</code></td><td>Create a directory.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">_</span> = <span class="s-f">fsbox.ConfigMkdir</span>(<span class="s-s">"data"</span>)
+<span class="s-k">_</span> = <span class="s-f">fsbox.ConfigWrite</span>(<span class="s-s">"data/settings.json"</span>, <span class="s-s">`{"volume":0.8}`</span>)
+data, err := <span class="s-f">fsbox.ConfigRead</span>(<span class="s-s">"data/settings.json"</span>)
+<span class="s-k">if</span> err != <span class="s-k">nil</span> { <span class="s-f">fsbox.Log</span>(err.Error()); <span class="s-k">return</span> }
+<span class="s-k">_</span> = data
+
+exists, <span class="s-k">_</span> := <span class="s-f">fsbox.ConfigExists</span>(<span class="s-s">"data/settings.json"</span>)
+<span class="s-k">_</span> = exists
+
+files, <span class="s-k">_</span> := <span class="s-f">fsbox.ConfigList</span>(<span class="s-s">"data"</span>)
+<span class="s-k">_</span> = files
+
+<span class="s-k">_</span> = <span class="s-f">fsbox.ConfigAppend</span>(<span class="s-s">"data/log.txt"</span>, <span class="s-s">"event\n"</span>)
+<span class="s-k">_</span> = <span class="s-f">fsbox.ConfigDelete</span>(<span class="s-s">"data/old.txt"</span>)</code></pre>
+</div>
+</div>
+
+<div id="models" class="tab">
+<h2>Models &amp; Shaders</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">LoadModel(path)</code></td><td><code class="inline-cell">LoadModel(string) (int32, error)</code></td><td>Load a GLB/OBJ model file.</td></tr>
+<tr><td><code class="inline">UnloadModel(h)</code></td><td><code class="inline-cell">UnloadModel(int32) error</code></td><td>Free a loaded model.</td></tr>
+<tr><td><code class="inline">ListModelFiles(dir)</code></td><td><code class="inline-cell">ListModelFiles(string) ([]string, error)</code></td><td>List model files in a directory.</td></tr>
+<tr><td><code class="inline">LoadShader(vertex, fragment)</code></td><td><code class="inline-cell">LoadShader(string, string) (int32, error)</code></td><td>Load a shader pair.</td></tr>
+<tr><td><code class="inline">UnloadShader(h)</code></td><td><code class="inline-cell">UnloadShader(int32) error</code></td><td>Free a loaded shader.</td></tr>
+</table>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">model, err := <span class="s-f">fsbox.LoadModel</span>(<span class="s-s">"Content/Spawnables/Props/Crate/crate.glb"</span>)
+<span class="s-k">if</span> err != <span class="s-k">nil</span> { <span class="s-f">fsbox.Log</span>(err.Error()) }
+
+files, <span class="s-k">_</span> := <span class="s-f">fsbox.ListModelFiles</span>(<span class="s-s">"Content/Spawnables/Props/Crate"</span>)
+<span class="s-k">_</span> = files
+
+shader, err := <span class="s-f">fsbox.LoadShader</span>(<span class="s-s">"shaders/vs.glsl"</span>, <span class="s-s">"shaders/fs.glsl"</span>)
+<span class="s-k">if</span> err != <span class="s-k">nil</span> { <span class="s-f">fsbox.Log</span>(err.Error()) }
+
+<span class="s-k">_</span> = <span class="s-f">fsbox.UnloadModel</span>(model)
+<span class="s-k">_</span> = <span class="s-f">fsbox.UnloadShader</span>(shader)</code></pre>
+</div>
+</div>
+
+<div id="content" class="tab">
+<h2>Content &amp; Resources</h2>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">ListPresets()</code></td><td><code class="inline-cell">ListPresets() ([]PresetInfo, error)</code></td><td>List every loaded spawn preset, including models.</td></tr>
+<tr><td><code class="inline">AddPreset(desc)</code></td><td><code class="inline-cell">AddPreset(PresetDesc) (int32, error)</code></td><td>Add a spawnable preset at runtime.</td></tr>
+<tr><td><code class="inline">RemovePreset(index, name)</code></td><td><code class="inline-cell">RemovePreset(int32, string) (bool, error)</code></td><td>Remove by name when non-empty, otherwise by index.</td></tr>
+<tr><td><code class="inline">ReadResource(path)</code></td><td><code class="inline-cell">ReadResource(string) (string, error)</code></td><td>Read a sandboxed mod resource.</td></tr>
+<tr><td><code class="inline">WriteResource(path, content)</code></td><td><code class="inline-cell">WriteResource(string, string) error</code></td><td>Write a sandboxed mod resource.</td></tr>
+<tr><td><code class="inline">AppendResource(path, content)</code></td><td><code class="inline-cell">AppendResource(string, string) error</code></td><td>Append to a sandboxed mod resource.</td></tr>
+<tr><td><code class="inline">ResourceExists(path)</code></td><td><code class="inline-cell">ResourceExists(string) (bool, error)</code></td><td>Check whether a resource exists.</td></tr>
+<tr><td><code class="inline">DeleteResource(path)</code></td><td><code class="inline-cell">DeleteResource(string) error</code></td><td>Delete a resource.</td></tr>
+<tr><td><code class="inline">ListResources(path)</code></td><td><code class="inline-cell">ListResources(string) ([]string, error)</code></td><td>List entries under a resource directory.</td></tr>
+<tr><td><code class="inline">ResourceDataDir()</code></td><td><code class="inline-cell">ResourceDataDir() (string, error)</code></td><td>Root directory for this mod's writable data.</td></tr>
+</table>
+<div class="callout warn">
+Resources are sandboxed to the mod's own data folder. Use <a href="#config">Config / Storage</a> for game-root files.
+</div>
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go">presets, <span class="s-k">_</span> := <span class="s-f">fsbox.ListPresets</span>()
+<span class="s-k">for</span> _, p := <span class="s-k">range</span> presets {
+    <span class="s-k">if</span> p.HasModel { <span class="s-f">fsbox.Log</span>(p.Name) }
+}
+
+id, err := <span class="s-f">fsbox.AddPreset</span>(<span class="s-f">fsbox.PresetDesc</span>{
+    <span class="s-k">Name</span>: <span class="s-s">"Bouncy Ball"</span>, <span class="s-k">Category</span>: <span class="s-s">"MOD"</span>, <span class="s-k">Kind</span>: <span class="s-s">"sphere"</span>,
+    <span class="s-k">Radius</span>: <span class="s-n">0.4</span>, <span class="s-k">Restitution</span>: <span class="s-n">0.9</span>,
+    <span class="s-k">Color</span>: <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">90</span>, <span class="s-k">G</span>: <span class="s-n">160</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>},
+})
+<span class="s-k">if</span> err != <span class="s-k">nil</span> { <span class="s-f">fsbox.Log</span>(err.Error()) }
+<span class="s-k">_</span> = id
+<span class="s-k">_</span>, <span class="s-k">_</span> = <span class="s-f">fsbox.RemovePreset</span>(<span class="s-n">-1</span>, <span class="s-s">"Bouncy Ball"</span>)
+
+dir, <span class="s-k">_</span> := <span class="s-f">fsbox.ResourceDataDir</span>()
+<span class="s-k">_</span> = <span class="s-f">fsbox.WriteResource</span>(<span class="s-s">"notes.txt"</span>, <span class="s-s">"hello"</span>)
+data, <span class="s-k">_</span> := <span class="s-f">fsbox.ReadResource</span>(<span class="s-s">"notes.txt"</span>)
+<span class="s-f">fsbox.Log</span>(dir)
+<span class="s-k">_</span> = data</code></pre>
+</div>
+</div>
+
+<div id="keys" class="tab">
+<h2>Keys &amp; Mouse (constants)</h2>
+<p>Pass these constants to the Input functions instead of raw numbers.</p>
+<pre class="code-block"><code class="language-go"><span class="s-c">// Example: detect E key</span>
+<span class="s-k">if</span> pressed, <span class="s-k">_</span> := <span class="s-f">fsbox.InputKeyPressed</span>(<span class="s-f">fsbox.KeyE</span>); pressed {
+    <span class="s-c">// do something</span>
+}
+
+<span class="s-c">// Example: detect left mouse click</span>
+<span class="s-k">if</span> clicked, <span class="s-k">_</span> := <span class="s-f">fsbox.InputMouseButtonPressed</span>(<span class="s-f">fsbox.MouseButtonLeft</span>); clicked {
+    <span class="s-c">// do something</span>
+}</code></pre>
+</div>
+
+<div id="examples" class="tab">
+<h2>Full Examples</h2>
+<div class="example">
+<h3>1. Spawn crate + play sound on key press</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">package</span> main
+
+<span class="s-k">import</span> (
+    fsbox <span class="s-s">"fsbox.dev/sdk"</span>
+)
+
+<span class="s-k">func</span> main() {
+    <span class="s-f">fsbox.OnTick</span>(<span class="s-k">func</span>() {
+        pressed, <span class="s-k">_</span> := <span class="s-f">fsbox.InputKeyPressed</span>(<span class="s-f">fsbox.KeyE</span>)
+        <span class="s-k">if</span> !pressed { <span class="s-k">return</span> }
+        info, <span class="s-k">_</span> := <span class="s-f">fsbox.GetPlayerInfo</span>()
+        pos := <span class="s-f">fsbox.Vec3</span>{<span class="s-k">X</span>: info.Position.X, <span class="s-k">Y</span>: info.Position.Y + <span class="s-n">1</span>, <span class="s-k">Z</span>: info.Position.Z}
+        id, err := <span class="s-f">fsbox.SpawnPreset</span>(<span class="s-s">"Crate"</span>, pos, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">200</span>, <span class="s-k">G</span>: <span class="s-n">200</span>, <span class="s-k">B</span>: <span class="s-n">200</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+        <span class="s-k">if</span> err != <span class="s-k">nil</span> { <span class="s-f">fsbox.Log</span>(err.Error()); <span class="s-k">return</span> }
+        <span class="s-k">_</span> = <span class="s-f">fsbox.LoadSound</span>(<span class="s-s">"spawn"</span>, <span class="s-s">"spawn.wav"</span>)
+        <span class="s-k">_</span> = <span class="s-f">fsbox.PlaySound</span>(<span class="s-s">"spawn"</span>)
+        <span class="s-k">_</span> = id
+    })
+}</code></pre>
+</div>
+<div class="example">
+<h3>2. Floating billboard panel that recolors a crate</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">package</span> main
+
+<span class="s-k">import</span> (
+    <span class="s-s">"encoding/json"</span>
+    fsbox <span class="s-s">"fsbox.dev/sdk"</span>
+)
+
+<span class="s-k">var</span> (
+    entID  int32
+    redBtn int32
+    newBtn int32
+)
+
+<span class="s-k">func</span> main() {
+    <span class="s-f">fsbox.On</span>(<span class="s-s">"ui.click"</span>, <span class="s-k">func</span>(e <span class="s-f">fsbox.Event</span>) {
+        <span class="s-k">var</span> d <span class="s-k">struct</span> {
+            Kind <span class="s-t">string</span> <span class="s-p">`</span><span class="s-s">json:"kind"</span><span class="s-p">`</span>
+            ID   <span class="s-t">int32</span>  <span class="s-p">`</span><span class="s-s">json:"id"</span><span class="s-p">`</span>
+        }
+        <span class="s-k">if</span> json.Unmarshal(e.Data, &amp;d) != <span class="s-k">nil</span> || d.Kind != <span class="s-s">"billboard_button"</span> {
+            <span class="s-k">return</span>
+        }
+        <span class="s-k">if</span> d.ID == redBtn {
+            <span class="s-k">_</span> = <span class="s-f">fsbox.SetEntityColor</span>(entID, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">220</span>, <span class="s-k">G</span>: <span class="s-n">60</span>, <span class="s-k">B</span>: <span class="s-n">60</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+        }
+        <span class="s-k">if</span> d.ID == newBtn {
+            <span class="s-k">_</span> = <span class="s-f">fsbox.SetEntityColor</span>(entID, <span class="s-f">fsbox.RandomColor</span>())
+        }
+    })
+
+    <span class="s-f">fsbox.OnTick</span>(<span class="s-k">func</span>() {
+        <span class="s-k">if</span> entID != <span class="s-n">0</span> {
+            <span class="s-k">return</span>
+        }
+        p, <span class="s-k">_</span> := <span class="s-f">fsbox.GetPlayerInfo</span>()
+        pos := <span class="s-f">fsbox.Vec3</span>{<span class="s-k">X</span>: p.Position.X, <span class="s-k">Y</span>: p.Position.Y + <span class="s-n">1</span>, <span class="s-k">Z</span>: p.Position.Z}
+        id, err := <span class="s-f">fsbox.SpawnPreset</span>(<span class="s-s">"Crate"</span>, pos, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">200</span>, <span class="s-k">G</span>: <span class="s-n">200</span>, <span class="s-k">B</span>: <span class="s-n">200</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+        <span class="s-k">if</span> err == <span class="s-k">nil</span> {
+            entID = id
+        }
+    })
+
+    panel, <span class="s-k">_</span> := <span class="s-f">fsbox.AddBillboardPanel</span>(<span class="s-n">3</span>, <span class="s-n">2</span>, <span class="s-n">0</span>, <span class="s-n">2.5</span>, <span class="s-n">1.2</span>)
+    redBtn, <span class="s-k">_</span> = <span class="s-f">fsbox.AddBillboardButtonStyled</span>(panel, <span class="s-n">-0.8</span>, <span class="s-n">-0.4</span>, <span class="s-n">0.7</span>, <span class="s-n">0.25</span>, <span class="s-s">"RED"</span>,
+        <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">168</span>, <span class="s-k">G</span>: <span class="s-n">62</span>, <span class="s-k">B</span>: <span class="s-n">62</span>, <span class="s-k">A</span>: <span class="s-n">245</span>},
+        <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>}, <span class="s-n">18</span>)
+    newBtn, <span class="s-k">_</span> = <span class="s-f">fsbox.AddBillboardButtonStyled</span>(panel, <span class="s-n">0.1</span>, <span class="s-n">-0.4</span>, <span class="s-n">0.7</span>, <span class="s-n">0.25</span>, <span class="s-s">"RANDOM"</span>,
+        <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">70</span>, <span class="s-k">G</span>: <span class="s-n">130</span>, <span class="s-k">B</span>: <span class="s-n">74</span>, <span class="s-k">A</span>: <span class="s-n">245</span>},
+        <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>}, <span class="s-n">18</span>)
+    <span class="s-k">_</span> = <span class="s-f">fsbox.AddBillboardTextWorld</span>(panel, <span class="s-n">0</span>, <span class="s-n">0.7</span>, <span class="s-s">"CRATE"</span>, <span class="s-n">0.12</span>, <span class="s-f">fsbox.Color</span>{<span class="s-k">R</span>: <span class="s-n">255</span>, <span class="s-k">G</span>: <span class="s-n">255</span>, <span class="s-k">B</span>: <span class="s-n">255</span>, <span class="s-k">A</span>: <span class="s-n">255</span>})
+}</code></pre>
+</div>
+<div class="example">
+<h3>3. Persist settings</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">func</span> main() {
+    <span class="s-k">_</span> = <span class="s-f">fsbox.ConfigMkdir</span>(<span class="s-s">"data"</span>)
+    <span class="s-k">_</span> = <span class="s-f">fsbox.ConfigWrite</span>(<span class="s-s">"data/settings.json"</span>, <span class="s-s">`{"sensitivity":1.0}`</span>)
+    data, <span class="s-k">_</span> := <span class="s-f">fsbox.ConfigRead</span>(<span class="s-s">"data/settings.json"</span>)
+    <span class="s-f">fsbox.Log</span>(data)
+}</code></pre>
+</div>
+</div>
+
+</main>
+<footer>FSBox DevKit - Mod SDK Reference</footer>
+<script>
+function showTab(id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tabbtn').forEach(function(b){
+    b.classList.remove('active');
+    var handler = b.getAttribute('onclick') || '';
+    if (handler.indexOf("'"+id+"'") !== -1) { b.classList.add('active'); }
+  });
+  var tab = document.getElementById(id);
+  if (tab) { tab.classList.add('active'); }
+}
+document.querySelectorAll('pre.code-block').forEach(function(pre){
+  var btn=document.createElement('button');
+  btn.className='copy-btn'; btn.textContent='Copy';
+  btn.onclick=function(){
+    var text=pre.textContent;
+    navigator.clipboard.writeText(text).then(function(){
+      btn.textContent='Copied!';
+      btn.classList.add('copied');
+      setTimeout(function(){btn.textContent='Copy';btn.classList.remove('copied');},1200);
+    });
+  };
+  pre.appendChild(btn);
+});
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	box3d "github.com/gataengine/box3d-go"
@@ -193,4 +193,3 @@ func (p *Player) respawn(g *Game) {
 	p.coyote = 0
 	p.jumpBuffer = 0
 }
-

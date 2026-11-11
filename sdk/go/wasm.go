@@ -15,7 +15,7 @@ func hostCall(reqPtr, reqLen, respPtr, respCap uint32) int32
 var reqBuf [1 << 20]byte
 var respBuf [1 << 20]byte
 
-func reqPtr() uint32 { return uint32(uintptr(unsafe.Pointer(&reqBuf[0]))) }
+func reqPtr() uint32  { return uint32(uintptr(unsafe.Pointer(&reqBuf[0]))) }
 func respPtr() uint32 { return uint32(uintptr(unsafe.Pointer(&respBuf[0]))) }
 
 // ---------------------------------------------------------------------------
@@ -36,21 +36,21 @@ type Vec3 struct {
 }
 
 type Entity struct {
-	ID           int32  `json:"id"`
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	Static       bool   `json:"static"`
-	Frozen       bool   `json:"frozen"`
-	Invulnerable bool   `json:"invulnerable"`
-	Transient    bool   `json:"transient"`
+	ID           int32   `json:"id"`
+	Name         string  `json:"name"`
+	Kind         string  `json:"kind"`
+	Static       bool    `json:"static"`
+	Frozen       bool    `json:"frozen"`
+	Invulnerable bool    `json:"invulnerable"`
+	Transient    bool    `json:"transient"`
 	Health       float32 `json:"health"`
 	MaxHealth    float32 `json:"max_health"`
-	Position     Vec3   `json:"position"`
-	Color        Color  `json:"color"`
-	Half         Vec3   `json:"half"`
+	Position     Vec3    `json:"position"`
+	Color        Color   `json:"color"`
+	Half         Vec3    `json:"half"`
 	Radius       float32 `json:"radius"`
 	Height       float32 `json:"height"`
-	Owner        string `json:"owner"`
+	Owner        string  `json:"owner"`
 }
 
 type Event struct {

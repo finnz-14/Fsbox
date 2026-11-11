@@ -891,13 +891,39 @@ func (g *Game) presetThumbnail(index int) rl.RenderTexture2D {
 }
 
 func (g *Game) drawPresetThumbnail(index int, dest rl.Rectangle) {
+	if index < 0 || index >= len(presets) {
+		return
+	}
+	p := presets[index]
+	if p.HasIcon && p.Icon.ID != 0 {
+		g.drawTextureFit(p.Icon, dest)
+		return
+	}
 	rt := g.presetThumbnail(index)
 	if rt.ID == 0 {
-		p := presets[index]
 		g.drawPresetPreview(p, dest.X+dest.Width*0.5, dest.Y+dest.Height*0.5, minf(dest.Width, dest.Height), 255)
 		return
 	}
 	g.drawRenderTextureFit(rt, dest)
+}
+
+func (g *Game) drawTextureFit(tex rl.Texture2D, dest rl.Rectangle) {
+	tw := float32(tex.Width)
+	th := float32(tex.Height)
+	if tw <= 0 || th <= 0 {
+		return
+	}
+	scale := minf(dest.Width/tw, dest.Height/th)
+	w := tw * scale
+	h := th * scale
+	r := rl.Rectangle{
+		X:      dest.X + (dest.Width-w)*0.5,
+		Y:      dest.Y + (dest.Height-h)*0.5,
+		Width:  w,
+		Height: h,
+	}
+	src := rl.Rectangle{X: 0, Y: 0, Width: tw, Height: th}
+	rl.DrawTexturePro(tex, src, r, rl2(0, 0), 0, rl.White)
 }
 
 func (g *Game) drawRenderTextureFit(rt rl.RenderTexture2D, dest rl.Rectangle) {
@@ -923,6 +949,10 @@ func (g *Game) drawRenderTextureFit(rt rl.RenderTexture2D, dest rl.Rectangle) {
 // drawPresetPreview3D renders the selected preset into the shared inspection
 // texture and blits it into the well.
 func (g *Game) drawPresetPreview3D(p ShapePreset, well rl.Rectangle) {
+	if p.HasIcon && p.Icon.ID != 0 {
+		g.drawTextureFit(p.Icon, well)
+		return
+	}
 	if g.modelPreview.ID == 0 {
 		g.modelPreview = rl.LoadRenderTexture(modelPreviewW, modelPreviewH)
 		if g.modelPreview.ID == 0 {

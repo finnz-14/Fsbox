@@ -252,7 +252,6 @@ func loadContentSpawnables() {
 		return
 	}
 
-	loadLooseJSONSpawnables(dir)
 	loadFolderSpawnables(dir)
 	sortPresets()
 	rebuildSpawnCategories()
@@ -497,8 +496,28 @@ func loadContentObject(category, objectDir string) {
 		// folder itself has no model files.
 		models = collectModelFilesRecursive(objectDir)
 	}
+
+	// Primitive (non-model) spawnable described by a JSON file in the object
+	// folder, e.g. Content/Spawnables/BLOCKS/Crate/Crate.json.
 	if len(models) == 0 {
-		fmt.Printf("[content]     SKIP: no .obj/.glb/.gltf found in %s\n", objectDir)
+		cs, ok := readObjectDescriptor(objectDir)
+		if !ok {
+			fmt.Printf("[content]     SKIP: no model or descriptor found in %s\n", objectDir)
+			return
+		}
+		if cs.Name == "" {
+			cs.Name = objectName
+		}
+		if cs.Category == "" {
+			cs.Category = category
+		}
+		p := primitivePresetFromDescriptor(cs, category)
+		if icon, ok := loadIconTexture(objectDir); ok {
+			p.Icon = icon
+			p.HasIcon = true
+		}
+		presets = append(presets, p)
+		fmt.Printf("[content]     ADDED primitive preset %q category=%s\n", p.Name, p.Category)
 		return
 	}
 
@@ -586,6 +605,11 @@ func loadContentObject(category, objectDir string) {
 		fmt.Printf("[content]     WARNING: hull decomposition failed\n")
 	}
 
+	skeletal := buildBoneHulls(model)
+	if len(skeletal) > 0 {
+		fmt.Printf("[content]     skeletal hulls: %d pieces\n", len(skeletal))
+	}
+
 	// Also build a single convex hull as a fallback.
 	hull := buildModelHull(model)
 	if hull != nil {
@@ -613,6 +637,7 @@ func loadContentObject(category, objectDir string) {
 		Hull:        hull,
 		Hulls:       hulls,
 		Mesh:        mesh,
+		Skeletal:    skeletal,
 		Animations:  anims,
 	}
 	if manifest.Density > 0 {
@@ -626,6 +651,11 @@ func loadContentObject(category, objectDir string) {
 	}
 	if len(manifest.Color) >= 3 {
 		p.Color = rl.NewColor(uint8(manifest.Color[0]), uint8(manifest.Color[1]), uint8(manifest.Color[2]), 255)
+	}
+
+	if icon, ok := loadIconTexture(objectDir); ok {
+		p.Icon = icon
+		p.HasIcon = true
 	}
 
 	presets = append(presets, p)
@@ -739,10 +769,66 @@ func resolveModelFile(objectDir string, models []string, want string) string {
 	return ""
 }
 
-func findManifestFile(objectDir string) string {
+// readObjectDescriptor reads the optional JSON descriptor stored inside an
+// object folder. It accepts both manifest-style and legacy contentSpawnable
+// layouts.
+func readObjectDescriptor(objectDir string) (contentSpawnable, bool) {
+	path := findObjectDescriptorFile(objectDir)
+	if path == "" {
+		return contentSpawnable{}, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Printf("[content]     descriptor read failed: %v\n", err)
+		return contentSpawnable{}, false
+	}
+	var cs contentSpawnable
+	if err := json.Unmarshal(data, &cs); err != nil {
+		fmt.Printf("[content]     descriptor parse failed: %v\n", err)
+		return contentSpawnable{}, false
+	}
+	// Also allow manifest-style keys.
+	var mf contentManifest
+	if err := json.Unmarshal(data, &mf); err == nil {
+		if cs.Name == "" {
+			cs.Name = mf.Name
+		}
+		if cs.Density == 0 {
+			cs.Density = mf.Density
+		}
+		if cs.Friction == 0 {
+			cs.Friction = mf.Friction
+		}
+		if cs.Restitution == 0 {
+			cs.Restitution = mf.Restitution
+		}
+		if len(cs.Color) == 0 {
+			cs.Color = mf.Color
+		}
+		if len(cs.Half) == 0 {
+			cs.Half = mf.Half
+		}
+	}
+	if cs.Category == "" {
+		// manifest uses "category" not contentSpawnable? contentSpawnable has Category
+	}
+	return cs, true
+}
+
+func findObjectDescriptorFile(objectDir string) string {
 	entries, err := os.ReadDir(objectDir)
 	if err != nil {
 		return ""
+	}
+	objectName := filepath.Base(objectDir)
+	// Prefer <object>.json, then manifest.json, then any .json.
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.EqualFold(e.Name(), objectName+".json") {
+			return filepath.Join(objectDir, e.Name())
+		}
 	}
 	for _, e := range entries {
 		if e.IsDir() {
@@ -752,7 +838,93 @@ func findManifestFile(objectDir string) string {
 			return filepath.Join(objectDir, e.Name())
 		}
 	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(e.Name()), ".json") {
+			return filepath.Join(objectDir, e.Name())
+		}
+	}
 	return ""
+}
+
+func primitivePresetFromDescriptor(cs contentSpawnable, category string) ShapePreset {
+	p := ShapePreset{Name: cs.Name, Density: cs.Density, Friction: cs.Friction, Restitution: cs.Restitution}
+	switch strings.ToLower(cs.Kind) {
+	case "sphere", "ball":
+		p.Kind = PropSphere
+		if cs.Radius <= 0 {
+			cs.Radius = 0.5
+		}
+		p.Radius = cs.Radius
+	case "cylinder", "barrel":
+		p.Kind = PropCylinder
+		if cs.Radius <= 0 {
+			cs.Radius = 0.4
+		}
+		if cs.Height <= 0 {
+			cs.Height = 1.0
+		}
+		p.Radius = cs.Radius
+		p.Height = cs.Height
+	default:
+		p.Kind = PropBox
+		hx, hy, hz := float32(0.5), float32(0.5), float32(0.5)
+		if len(cs.Half) >= 1 {
+			hx = cs.Half[0]
+		}
+		if len(cs.Half) >= 2 {
+			hy = cs.Half[1]
+		}
+		if len(cs.Half) >= 3 {
+			hz = cs.Half[2]
+		}
+		p.Half = bv(hx, hy, hz)
+	}
+	if len(cs.Color) >= 3 {
+		p.Color = rl.NewColor(uint8(cs.Color[0]), uint8(cs.Color[1]), uint8(cs.Color[2]), 255)
+	} else {
+		p.Color = rl.Gray
+	}
+	if p.Density <= 0 {
+		p.Density = 150
+	}
+	if p.Friction <= 0 {
+		p.Friction = 0.6
+	}
+	if cs.Category != "" {
+		p.Category = strings.ToUpper(cs.Category)
+	} else if category != "" {
+		p.Category = strings.ToUpper(category)
+	} else {
+		p.Category = "MISC"
+	}
+	return p
+}
+
+func loadIconTexture(objectDir string) (rl.Texture2D, bool) {
+	entries, err := os.ReadDir(objectDir)
+	if err != nil {
+		return rl.Texture2D{}, false
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.EqualFold(e.Name(), "icon.png") {
+			tex := rl.LoadTexture(filepath.Join(objectDir, e.Name()))
+			if tex.ID != 0 {
+				rl.SetTextureFilter(tex, rl.FilterBilinear)
+				return tex, true
+			}
+		}
+	}
+	return rl.Texture2D{}, false
+}
+
+func findManifestFile(objectDir string) string {
+	return findObjectDescriptorFile(objectDir)
 }
 
 func readContentManifest(objectDir string) (contentManifest, string, bool) {
@@ -946,35 +1118,84 @@ func buildModelHulls(model rl.Model) []*box3d.HullData {
 	return hulls
 }
 
-// buildHullsFromPoints splits a model-space vertex cloud with an adaptive k-d
-// tree and turns each leaf into a convex hull.
-func buildHullsFromPoints(verts []box3d.Vec3) []*box3d.HullData {
+// buildBoneHulls groups a skinned model's vertices by their dominant bone and
+// decomposes each group into convex-hull leaves. Points are kept in raw mesh
+// space (the model transform is applied later) so the bone matrix can be
+// applied first. Returns nil for non-skinned models.
+func buildBoneHulls(model rl.Model) []BoneHull {
+	var out []BoneHull
+	for _, mesh := range model.GetMeshes() {
+		if mesh.VertexCount <= 0 || mesh.Vertices == nil || mesh.BoneIndices == nil || mesh.BoneWeights == nil {
+			continue
+		}
+		vs := unsafe.Slice(mesh.Vertices, int(mesh.VertexCount)*3)
+		bi := unsafe.Slice(mesh.BoneIndices, int(mesh.VertexCount)*4)
+		bw := unsafe.Slice(mesh.BoneWeights, int(mesh.VertexCount)*4)
+
+		groups := make(map[int32][]box3d.Vec3)
+		for i := 0; i < int(mesh.VertexCount); i++ {
+			bestBone := int32(0)
+			bestW := float32(0)
+			for j := 0; j < 4; j++ {
+				w := bw[i*4+j]
+				if w > bestW {
+					bestW = w
+					bestBone = int32(bi[i*4+j])
+				}
+			}
+			if bestW <= 0 {
+				continue
+			}
+			pt := box3d.Vec3{X: vs[i*3], Y: vs[i*3+1], Z: vs[i*3+2]}
+			groups[bestBone] = append(groups[bestBone], pt)
+		}
+
+		for bone, pts := range groups {
+			if len(pts) < 4 {
+				continue
+			}
+			lower, upper := hullBounds(pts)
+			minDim := minf(upper.X-lower.X, minf(upper.Y-lower.Y, upper.Z-lower.Z))
+			if minDim < 0.006 {
+				continue
+			}
+			leaves := splitIntoLeaves(pts)
+			for _, leaf := range leaves {
+				l, u := hullBounds(leaf)
+				leafMin := minf(u.X-l.X, minf(u.Y-l.Y, u.Z-l.Z))
+				if leafMin < 0.006 {
+					continue
+				}
+				out = append(out, BoneHull{Bone: bone, Points: leaf})
+			}
+		}
+	}
+	return out
+}
+
+// splitIntoLeaves splits a vertex cloud with an adaptive k-d tree and returns
+// the leaf point sets. Shared by the bind-pose hull builder and the per-bone
+// skeletal builder.
+func splitIntoLeaves(verts []box3d.Vec3) [][]box3d.Vec3 {
 	if len(verts) < 4 {
 		return nil
 	}
 
-	// A leaf of roughly 700 points gives a handful of hulls per body part
-	// without exploding the shape count. The depth limit stops pathological
-	// inputs (a perfectly flat sheet, for example) from recursing forever.
 	const (
 		leafSize = 700
 		maxDepth = 24
-		// box3d caps a hull at 256 half edges (128 edges). A convex
-		// polyhedron has roughly 3V-6 edges, so 40 vertices stays safely
-		// below the limit while keeping each piece detailed.
-		maxHullVerts = 40
 	)
 
-	var hulls []*box3d.HullData
+	var leaves [][]box3d.Vec3
 	var split func(pts []box3d.Vec3, depth int)
 	split = func(pts []box3d.Vec3, depth int) {
 		if len(pts) < 4 {
 			return
 		}
 		if len(pts) <= leafSize || depth >= maxDepth {
-			if h := createLeafHull(pts, maxHullVerts); h != nil {
-				hulls = append(hulls, h)
-			}
+			leaf := make([]box3d.Vec3, len(pts))
+			copy(leaf, pts)
+			leaves = append(leaves, leaf)
 			return
 		}
 
@@ -983,9 +1204,6 @@ func buildHullsFromPoints(verts []box3d.Vec3) []*box3d.HullData {
 		mid := (hullAxisValue(lower, axis) + hullAxisValue(upper, axis)) * 0.5
 		lo, hi := hullPartition(pts, axis, mid)
 
-		// A midpoint split can collapse when the points are clustered, which
-		// would leave a side too small to form a hull. Fall back to the median
-		// so both halves always make progress and no vertex is discarded.
 		if len(lo) < 4 || len(hi) < 4 {
 			sort.Slice(pts, func(i, j int) bool {
 				return hullAxisValue(pts[i], axis) < hullAxisValue(pts[j], axis)
@@ -1001,6 +1219,31 @@ func buildHullsFromPoints(verts []box3d.Vec3) []*box3d.HullData {
 		split(hi, depth+1)
 	}
 	split(verts, 0)
+	return leaves
+}
+
+// buildHullsFromPoints splits a model-space vertex cloud with an adaptive k-d
+// tree and turns each leaf into a convex hull.
+func buildHullsFromPoints(verts []box3d.Vec3) []*box3d.HullData {
+	if len(verts) < 4 {
+		return nil
+	}
+
+	const maxHullVerts = 40
+
+	leaves := splitIntoLeaves(verts)
+	var hulls []*box3d.HullData
+	for _, leaf := range leaves {
+		if h := createLeafHull(leaf, maxHullVerts); h != nil {
+			hulls = append(hulls, h)
+		}
+	}
+	if len(hulls) == 0 {
+		// fallback whole cloud
+		if h := createLeafHull(verts, maxHullVerts); h != nil {
+			hulls = append(hulls, h)
+		}
+	}
 	return hulls
 }
 

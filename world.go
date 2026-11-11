@@ -271,6 +271,11 @@ type Entity struct {
 	Mesh         *box3d.MeshData
 	Owner        string
 
+	// Skeletal (per-bone) collision. When non-empty, the entity uses one
+	// dynamic body whose shapes are rebuilt from the current pose each frame.
+	Skeletal       []BoneHull
+	SkeletalShapes []box3d.ShapeID
+
 	// Model animations (glTF, etc.). Loaded alongside the model; per-entity
 	// playback state lives here so multiple instances of the same model can
 	// play different animations.
@@ -305,6 +310,14 @@ func maxf(a, b float32) float32 {
 	return b
 }
 
+// BoneHull is one convex-decomposition leaf belonging to a single bone. Points
+// are stored in raw (un-centered) model space so they can be posed with the
+// bone matrix and then centered by the model transform at runtime.
+type BoneHull struct {
+	Bone   int32
+	Points []box3d.Vec3
+}
+
 type ShapePreset struct {
 	Name        string
 	Category    string
@@ -321,6 +334,13 @@ type ShapePreset struct {
 	Hull        *box3d.HullData
 	Hulls       []*box3d.HullData
 	Mesh        *box3d.MeshData
+
+	// Optional 2D icon texture loaded from icon.png beside the content file.
+	Icon    rl.Texture2D
+	HasIcon bool
+
+	// Per-bone skeletal collision hulls (raw model-space vertex groups).
+	Skeletal []BoneHull
 
 	// Model animations loaded alongside the model.
 	Animations []rl.ModelAnimation
@@ -604,6 +624,84 @@ func (g *Game) addHullsEntity(static bool, pos box3d.Pos, rot box3d.Quat, half b
 	return e
 }
 
+// addSkeletalEntity attaches a per-bone convex decomposition to one dynamic
+// body. The shapes are created from the bind pose and re-cooked from the
+// current pose every frame by updateSkeletalCollisions, giving two-way
+// physics that follows the animated model.
+func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, half box3d.Vec3, c rl.Color, name string, density, friction, restitution float32, skeletal []BoneHull, model rl.Model, hasModel bool) *Entity {
+	bd := box3d.DefaultBodyDef()
+	bd.Type = box3d.DynamicBody
+	bd.Position = pos
+	bd.Rotation = rot
+	bd.Name = name
+	if static {
+		bd.Type = box3d.StaticBody
+	} else {
+		bd.LinearDamping = 0.04
+		bd.AngularDamping = 0.14
+	}
+
+	body := g.world.CreateBody(&bd)
+	if body.IsNull() {
+		return nil
+	}
+
+	sd := box3d.DefaultShapeDef()
+	sd.Density = density
+	sd.BaseMaterial = box3d.DefaultSurfaceMaterial()
+	sd.BaseMaterial.Friction = friction
+	sd.BaseMaterial.Restitution = restitution
+	if static {
+		sd.Filter = staticFilter()
+	} else {
+		sd.Filter = propFilter()
+	}
+
+	var shapes []box3d.ShapeID
+	var used []BoneHull
+	attached := 0
+	for _, bh := range skeletal {
+		pts := make([]box3d.Vec3, len(bh.Points))
+		for j, v := range bh.Points {
+			mv := rl.Vector3Transform(rl.Vector3{X: v.X, Y: v.Y, Z: v.Z}, model.Transform)
+			pts[j] = box3d.Vec3{X: mv.X, Y: mv.Y, Z: mv.Z}
+		}
+		hull := createLeafHull(pts, 40)
+		if hull == nil {
+			continue
+		}
+		sid := body.CreateHullShape(&sd, hull)
+		if sid.IsNull() {
+			continue
+		}
+		// Keep the hull list and shape list in lockstep: updateSkeletalCollisions
+		// matches them by index and silently stops updating when the lengths
+		// differ.
+		shapes = append(shapes, sid)
+		used = append(used, bh)
+		attached++
+	}
+	if attached == 0 {
+		h := box3d.MakeBoxHull(half.X, half.Y, half.Z)
+		body.CreateHullShape(&sd, &h.Base)
+		// No per-bone shapes to drive; keep the lists empty so the skeletal
+		// updater leaves the fallback box hull alone.
+		shapes = nil
+		used = nil
+	}
+
+	e := &Entity{
+		Body: body, Kind: PropBox, Half: half, Sides: 4,
+		Color: c, Name: name, Static: static,
+		Density: density, Friction: friction, Restitution: restitution,
+		SpawnedAt: g.time,
+		Model:     model, HasModel: hasModel,
+		Skeletal: used, SkeletalShapes: shapes,
+	}
+	g.registerEntity(e)
+	return e
+}
+
 func (g *Game) addSphereEntity(pos box3d.Pos, rot box3d.Quat, radius float32, c rl.Color, name string, density, friction, restitution float32) *Entity {
 	bd := box3d.DefaultBodyDef()
 	bd.Type = box3d.DynamicBody
@@ -680,6 +778,11 @@ func (g *Game) spawnPreset(p ShapePreset, pos box3d.Pos, rot box3d.Quat, c rl.Co
 	}
 	switch p.Kind {
 	case PropBox:
+		if len(p.Skeletal) > 0 {
+			e := g.addSkeletalEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Skeletal, p.Model, p.HasModel)
+			applyPresetAnimations(e, p)
+			return e
+		}
 		if len(p.Hulls) > 0 {
 			e := g.addHullsEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Hulls, p.Model, p.HasModel)
 			applyPresetAnimations(e, p)
@@ -732,7 +835,10 @@ func (g *Game) resetWorld(withStarter bool, spawn box3d.Pos, yaw, pitch float32,
 	g.byBody = make(map[box3d.BodyID]*Entity)
 	g.byID = make(map[int32]*Entity)
 	g.nextEntityID = 1
+	// World is already destroyed; just clear the reference without touching
+	// the (now invalid) body.
 	g.held = nil
+	g.heldLocked = false
 	g.aim = nil
 	g.holdDist = 0
 	g.particles = nil
@@ -960,11 +1066,33 @@ func (g *Game) grab() {
 	q := e.Body.GetRotation()
 	// inverse rotate hit-bp by q
 	g.holdOffset = toBv(rl.Vector3RotateByQuaternion(rlv(hit.X-bp.X, hit.Y-bp.Y, hit.Z-bp.Z), rl.Quaternion{X: -q.V.X, Y: -q.V.Y, Z: -q.V.Z, W: q.S}))
-	// The held prop is pulled to the wheel-controlled range. Very large props
-	// keep a minimum clearance so they do not fill the camera.
+	// The held prop stays at its actual distance from the camera when grabbed,
+	// so it does not yank back and forth between the grab point and the
+	// wheel-controlled placement distance.
 	size := e.radiusXZ()
-	g.holdDist = clampf(maxf(g.placementDistance(), 2.0+size*1.4), minPlaceDist, maxPlaceDist)
+	eye := g.eyePosition()
+	dx := res.Point.X - eye.X
+	dy := res.Point.Y - eye.Y
+	dz := res.Point.Z - eye.Z
+	g.holdDist = clampf(vlen(dx, dy, dz), minPlaceDist, maxPlaceDist)
+	// Keep placement distance in sync so new spawns appear at the same range.
 	g.spawnDist = g.holdDist
+	_ = size
+	// Lock all angular axes so physics (walls, other bodies) can never rotate
+	// the held prop. Only the player can rotate it via updateHeldRotation.
+	e.Body.SetMotionLocks(box3d.MotionLocks{AngularX: true, AngularY: true, AngularZ: true})
+	g.heldLocked = true
+}
+
+// releaseHeld unlocks motion locks on the held body and clears the held
+// reference. Call this instead of setting g.held = nil directly so the
+// angular lock is always restored.
+func (g *Game) releaseHeld() {
+	if g.held != nil && g.heldLocked {
+		g.held.Body.SetMotionLocks(box3d.MotionLocks{})
+		g.heldLocked = false
+	}
+	g.held = nil
 }
 
 func (g *Game) throwHeld() {
@@ -985,6 +1113,11 @@ func (g *Game) throwHeld() {
 		(g.rng.Float32()-0.5)*7,
 		(g.rng.Float32()-0.5)*7,
 	))
+	// Unlock rotation before releasing so the thrown body can spin naturally.
+	if g.heldLocked {
+		g.held.Body.SetMotionLocks(box3d.MotionLocks{})
+		g.heldLocked = false
+	}
 	g.held = nil
 	if g.shake < 0.10 {
 		g.shake = 0.10
@@ -1034,7 +1167,7 @@ func (g *Game) updateHeld(dt float32) {
 	dz := target.Z - p.Z
 	dist := vlen(dx, dy, dz)
 	if dist > 14 {
-		g.held = nil
+		g.releaseHeld()
 		return
 	}
 
@@ -1052,10 +1185,11 @@ func (g *Game) updateHeld(dt float32) {
 		Y: lerpf(v.Y, ty, blend),
 		Z: lerpf(v.Z, tz, blend),
 	})
-	av := e.Body.GetAngularVelocity()
-	if !rl.IsKeyDown(rl.KeyR) {
-		e.Body.SetAngularVelocity(bv(av.X*0.9, av.Y*0.9, av.Z*0.9))
-	}
+	// Never let physics impart auto-rotation on a held prop. Rotation only
+	// happens when the player explicitly holds E/R and moves the mouse
+	// (updateHeldRotation). Zero angular velocity every tick so bouncing off
+	// a wall cannot make the object spin on its own.
+	e.Body.SetAngularVelocity(box3d.Vec3Zero)
 }
 
 // cameraRightAxis is the horizontal right vector of the view, with a yaw-based

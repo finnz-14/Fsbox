@@ -51,4 +51,4 @@ Commands are grouped by namespace. All are reachable through `fsbox_call` / `eng
 - `sdk/go` module `fsbox.dev/sdk` provides a WASM helper (`fsbox.Call`) and exported memory/event stubs.
 
 ## Build
-- `build.bat` builds WASM mod, Go worker, game, and copies to `bin\sandbox3d.exe` and `sandbox3d.exe`.
+- `build.bat` builds WASM mod, Go worker, and game to `fsbox.exe`.

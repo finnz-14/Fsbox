@@ -20,37 +20,37 @@ import (
 )
 
 type ModManifest struct {
-	ID                  string   `json:"id"`
-	Name                string   `json:"name"`
-	Version             string   `json:"version"`
-	Author              string   `json:"author"`
-	Description         string   `json:"description"`
-	Runtime             string   `json:"runtime"`
-	Entry               string   `json:"entry"`
-	APIVersion          string   `json:"api_version"`
-	GameVersion         string   `json:"game_version"`
-	Dependencies        []string `json:"dependencies"`
-	OptionalDeps        []string `json:"optional_dependencies"`
-	Conflicts           []string `json:"conflicts"`
-	Permissions         []string `json:"permissions"`
-	Capabilities        []string `json:"capabilities"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Version      string   `json:"version"`
+	Author       string   `json:"author"`
+	Description  string   `json:"description"`
+	Runtime      string   `json:"runtime"`
+	Entry        string   `json:"entry"`
+	APIVersion   string   `json:"api_version"`
+	GameVersion  string   `json:"game_version"`
+	Dependencies []string `json:"dependencies"`
+	OptionalDeps []string `json:"optional_dependencies"`
+	Conflicts    []string `json:"conflicts"`
+	Permissions  []string `json:"permissions"`
+	Capabilities []string `json:"capabilities"`
 }
 
 type Mod struct {
-	Name           string
-	Module         api.Module
-	Manifest       ModManifest
-	HasManifest    bool
-	OnInit         api.Function
-	OnTick         api.Function
-	OnTickName     string
-	Worker         *GoModWorker
-	IsGo           bool
+	Name        string
+	Module      api.Module
+	Manifest    ModManifest
+	HasManifest bool
+	OnInit      api.Function
+	OnTick      api.Function
+	OnTickName  string
+	Worker      *GoModWorker
+	IsGo        bool
 
 	// WASM optional exports
-	ModEvent       api.Function
-	ModAlloc       api.Function
-	ModScratch     api.Function
+	ModEvent   api.Function
+	ModAlloc   api.Function
+	ModScratch api.Function
 
 	// Per-mod event queue for mods that cannot receive push callbacks.
 	PendingEvents [][]byte
@@ -530,15 +530,21 @@ func compareVersion(a, b string) int {
 	am, ami, ap := parseVersion(a)
 	bm, bmi, bp := parseVersion(b)
 	if am != bm {
-		if am < bm { return -1 }
+		if am < bm {
+			return -1
+		}
 		return 1
 	}
 	if ami != bmi {
-		if ami < bmi { return -1 }
+		if ami < bmi {
+			return -1
+		}
 		return 1
 	}
 	if ap != bp {
-		if ap < bp { return -1 }
+		if ap < bp {
+			return -1
+		}
 		return 1
 	}
 	return 0
@@ -610,7 +616,6 @@ func satisfiesVersion(version, op, constraintVer string) bool {
 		return compareVersion(version, constraintVer) == 0
 	}
 }
-
 
 func writeGuestResponse(m api.Module, respPtr, respCap uint32, resp map[string]any) int32 {
 	data, err := json.Marshal(resp)

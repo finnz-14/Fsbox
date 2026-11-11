@@ -21,21 +21,21 @@ type Vec3 struct {
 }
 
 type Entity struct {
-	ID           int32  `json:"id"`
-	Name         string `json:"name"`
-	Kind         string `json:"kind"`
-	Static       bool   `json:"static"`
-	Frozen       bool   `json:"frozen"`
-	Invulnerable bool   `json:"invulnerable"`
-	Transient    bool   `json:"transient"`
+	ID           int32   `json:"id"`
+	Name         string  `json:"name"`
+	Kind         string  `json:"kind"`
+	Static       bool    `json:"static"`
+	Frozen       bool    `json:"frozen"`
+	Invulnerable bool    `json:"invulnerable"`
+	Transient    bool    `json:"transient"`
 	Health       float32 `json:"health"`
 	MaxHealth    float32 `json:"max_health"`
-	Position     Vec3   `json:"position"`
-	Color        Color  `json:"color"`
-	Half         Vec3   `json:"half"`
+	Position     Vec3    `json:"position"`
+	Color        Color   `json:"color"`
+	Half         Vec3    `json:"half"`
 	Radius       float32 `json:"radius"`
 	Height       float32 `json:"height"`
-	Owner        string `json:"owner"`
+	Owner        string  `json:"owner"`
 }
 
 type Event struct {
@@ -48,12 +48,12 @@ type EventHandler func(Event)
 type TickHandler func()
 
 func On(event string, h EventHandler) {}
-func OnTick(h TickHandler)           {}
+func OnTick(h TickHandler)            {}
 
 func Call(cmd string, args any) (json.RawMessage, error) { return nil, nil }
 func Log(msg string)                                     {}
-func Toast(msg string, c Color)                           {}
-func SetEntityColor(id int32, c Color) error              { return nil }
+func Toast(msg string, c Color)                          {}
+func SetEntityColor(id int32, c Color) error             { return nil }
 func SpawnEntity(kind string, pos Vec3, color Color) (int32, error) {
 	return 0, nil
 }
