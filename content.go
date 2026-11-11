@@ -609,6 +609,10 @@ func loadContentObject(category, objectDir string) {
 	if len(skeletal) > 0 {
 		fmt.Printf("[content]     skeletal hulls: %d pieces\n", len(skeletal))
 	}
+	colliders := buildBoneColliders(skeletal)
+	if len(colliders) > 0 {
+		fmt.Printf("[content]     skeletal colliders: %d pieces\n", len(colliders))
+	}
 
 	// Also build a single convex hull as a fallback.
 	hull := buildModelHull(model)
@@ -624,21 +628,22 @@ func loadContentObject(category, objectDir string) {
 	}
 
 	p := ShapePreset{
-		Name:        name,
-		Category:    strings.ToUpper(category),
-		Kind:        PropBox,
-		Half:        bv(hx, hy, hz),
-		Density:     150,
-		Friction:    0.6,
-		Restitution: 0.03,
-		Color:       rl.White,
-		Model:       model,
-		HasModel:    true,
-		Hull:        hull,
-		Hulls:       hulls,
-		Mesh:        mesh,
-		Skeletal:    skeletal,
-		Animations:  anims,
+		Name:              name,
+		Category:          strings.ToUpper(category),
+		Kind:              PropBox,
+		Half:              bv(hx, hy, hz),
+		Density:           150,
+		Friction:          0.6,
+		Restitution:       0.03,
+		Color:             rl.White,
+		Model:             model,
+		HasModel:          true,
+		Hull:              hull,
+		Hulls:             hulls,
+		Mesh:              mesh,
+		Skeletal:          skeletal,
+		SkeletalColliders: colliders,
+		Animations:        anims,
 	}
 	if manifest.Density > 0 {
 		p.Density = manifest.Density

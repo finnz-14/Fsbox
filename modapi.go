@@ -2128,16 +2128,27 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		e.HasModel = true
 		e.Skeletal = buildBoneHulls(m)
 		e.Animations = g.modModelAnims[a.Model]
-		// Rebuild skeletal collision shapes if the entity already has them.
-		if len(e.SkeletalShapes) > 0 {
-			// Destroy old shapes.
-			for _, sid := range e.SkeletalShapes {
-				if !sid.IsNull() {
-					sid.Destroy(false)
-				}
+
+		// Rebuild collision shapes for the new model. Destroy both the
+		// primitive and hull sets so no stale shapes are left on the body.
+		hadSkeletal := len(e.SkeletalColliderShapes) > 0 || len(e.SkeletalShapes) > 0
+		for _, sid := range e.SkeletalColliderShapes {
+			if !sid.IsNull() {
+				sid.Destroy(false)
 			}
-			e.SkeletalShapes = nil
-			// Create new shapes from the new skeletal hulls.
+		}
+		for _, sid := range e.SkeletalShapes {
+			if !sid.IsNull() {
+				sid.Destroy(false)
+			}
+		}
+		e.SkeletalColliderShapes = nil
+		e.SkeletalShapes = nil
+		e.SkeletalColliders = nil
+		e.SkeletalTick = 0
+		e.skeletalScratch = nil
+
+		if hadSkeletal {
 			sd := box3d.DefaultShapeDef()
 			sd.Density = e.Density
 			if sd.Density <= 0 {
@@ -2147,27 +2158,39 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 			sd.BaseMaterial.Friction = e.Friction
 			sd.BaseMaterial.Restitution = e.Restitution
 			sd.Filter = propFilter()
-			var used []BoneHull
-			for _, bh := range e.Skeletal {
-				// Transform to centered space for bind pose.
-				pts := make([]box3d.Vec3, len(bh.Points))
-				for j, v := range bh.Points {
-					mv := rl.Vector3Transform(rl.Vector3{X: v.X, Y: v.Y, Z: v.Z}, m.Transform)
-					pts[j] = box3d.Vec3{X: mv.X, Y: mv.Y, Z: mv.Z}
+
+			// Prefer the cheap primitive proxies.
+			colliders := buildBoneColliders(e.Skeletal)
+			usedColliders, colliderShapes := createSkeletalColliderShapes(e.Body, &sd, colliders, m)
+			if len(colliderShapes) > 0 {
+				e.SkeletalColliders = usedColliders
+				e.SkeletalColliderShapes = colliderShapes
+			} else {
+				// Hull fallback.
+				var used []BoneHull
+				for _, bh := range e.Skeletal {
+					pts := make([]box3d.Vec3, len(bh.Points))
+					for j, v := range bh.Points {
+						mv := rl.Vector3Transform(rl.Vector3{X: v.X, Y: v.Y, Z: v.Z}, m.Transform)
+						pts[j] = box3d.Vec3{X: mv.X, Y: mv.Y, Z: mv.Z}
+					}
+					hull := createLeafHull(pts, 40)
+					if hull == nil {
+						continue
+					}
+					sid := e.Body.CreateHullShape(&sd, hull)
+					if sid.IsNull() {
+						continue
+					}
+					e.SkeletalShapes = append(e.SkeletalShapes, sid)
+					used = append(used, bh)
 				}
-				hull := createLeafHull(pts, 40)
-				if hull == nil {
-					continue
-				}
-				sid := e.Body.CreateHullShape(&sd, hull)
-				if sid.IsNull() {
-					continue
-				}
-				// Keep hulls and shapes aligned by index.
-				e.SkeletalShapes = append(e.SkeletalShapes, sid)
-				used = append(used, bh)
+				e.Skeletal = used
 			}
-			e.Skeletal = used
+		}
+		if len(e.SkeletalColliderShapes) > 0 || len(e.SkeletalShapes) > 0 {
+			fmt.Printf("[entity.set_model] skeletal colliders=%d shapes=%d\n",
+				len(e.SkeletalColliderShapes), len(e.SkeletalShapes))
 		}
 		e.AnimCurrent = 0
 		e.AnimFrame = 0

@@ -83,12 +83,14 @@ func (g *Game) apiSpawnEntity(owner string, cmd string, args json.RawMessage) (a
 		if a.Half != nil {
 			half = a.Half.box()
 		}
+		skeletal := buildBoneHulls(m)
 		p := ShapePreset{
 			Name: "ModModel", Category: "MOD", Kind: PropBox,
 			Half: half, Density: 150, Friction: 0.6, Restitution: 0.03,
 			Color: color, Model: m, HasModel: true,
-			Hull: buildModelHull(m), Hulls: buildModelHulls(m), Skeletal: buildBoneHulls(m),
-			Animations: g.modModelAnims[a.Model],
+			Hull: buildModelHull(m), Hulls: buildModelHulls(m), Skeletal: skeletal,
+			SkeletalColliders: buildBoneColliders(skeletal),
+			Animations:        g.modModelAnims[a.Model],
 		}
 		if a.Name != "" {
 			p.Name = a.Name

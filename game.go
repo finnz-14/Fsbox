@@ -629,7 +629,9 @@ func (g *Game) Update(dt float64) {
 		g.updateModParticles(float32(simDt))
 		g.updateMusic()
 		g.advanceAnimations(float32(simDt))
-		g.updateSkeletalCollisions()
+		// Skeletal collision follows the pose applied by the draw pass, so it
+		// is updated per entity there instead of evaluating every animation a
+		// second time here.
 		if g.shake > 0 {
 			g.shake -= simDt
 			if g.shake < 0 {

@@ -272,9 +272,18 @@ type Entity struct {
 	Owner        string
 
 	// Skeletal (per-bone) collision. When non-empty, the entity uses one
-	// dynamic body whose shapes are rebuilt from the current pose each frame.
-	Skeletal       []BoneHull
-	SkeletalShapes []box3d.ShapeID
+	// dynamic body whose shapes follow the current pose.
+	//
+	// SkeletalColliders are cheap capsule/sphere proxies built once from the
+	// bind pose. They are moved by updating the primitive parameters, which
+	// avoids re-cooking convex hulls every frame. Skeletal/SkeletalShapes is
+	// kept as a hull fallback for models where primitive fitting fails.
+	Skeletal               []BoneHull
+	SkeletalShapes         []box3d.ShapeID
+	SkeletalColliders      []BoneCollider
+	SkeletalColliderShapes []box3d.ShapeID
+	SkeletalTick           int
+	skeletalScratch        []box3d.Vec3
 
 	// Model animations (glTF, etc.). Loaded alongside the model; per-entity
 	// playback state lives here so multiple instances of the same model can
@@ -318,6 +327,27 @@ type BoneHull struct {
 	Points []box3d.Vec3
 }
 
+// BoneCollider is a cheap per-bone collision proxy. The geometry is stored in
+// raw model space and only its transform changes at runtime, so the expensive
+// hull cook happens once when the model loads instead of every animation frame.
+//
+// A collider is either a sphere (Sphere == true) or a capsule between A and B.
+type BoneCollider struct {
+	Bone   int32
+	Sphere bool
+	Center box3d.Vec3 // sphere centre, raw model space
+	A      box3d.Vec3 // capsule start, raw model space
+	B      box3d.Vec3 // capsule end, raw model space
+	Radius float32
+
+	// Runtime cache used to skip shape updates when the pose barely changed.
+	lastA   box3d.Vec3
+	lastB   box3d.Vec3
+	lastC   box3d.Vec3
+	lastR   float32
+	hasLast bool
+}
+
 type ShapePreset struct {
 	Name        string
 	Category    string
@@ -341,6 +371,10 @@ type ShapePreset struct {
 
 	// Per-bone skeletal collision hulls (raw model-space vertex groups).
 	Skeletal []BoneHull
+
+	// Cheap per-bone capsule/sphere proxies generated from Skeletal. These are
+	// preferred at runtime because they avoid per-frame hull re-cooking.
+	SkeletalColliders []BoneCollider
 
 	// Model animations loaded alongside the model.
 	Animations []rl.ModelAnimation
@@ -628,7 +662,7 @@ func (g *Game) addHullsEntity(static bool, pos box3d.Pos, rot box3d.Quat, half b
 // body. The shapes are created from the bind pose and re-cooked from the
 // current pose every frame by updateSkeletalCollisions, giving two-way
 // physics that follows the animated model.
-func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, half box3d.Vec3, c rl.Color, name string, density, friction, restitution float32, skeletal []BoneHull, model rl.Model, hasModel bool) *Entity {
+func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, half box3d.Vec3, c rl.Color, name string, density, friction, restitution float32, skeletal []BoneHull, colliders []BoneCollider, model rl.Model, hasModel bool) *Entity {
 	bd := box3d.DefaultBodyDef()
 	bd.Type = box3d.DynamicBody
 	bd.Position = pos
@@ -657,31 +691,37 @@ func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, hal
 		sd.Filter = propFilter()
 	}
 
+	// Prefer cheap capsule/sphere proxies. They are fitted once from the bind
+	// pose and only their transform changes at runtime, so animation no longer
+	// triggers a per-frame convex hull cook.
+	usedColliders, colliderShapes := createSkeletalColliderShapes(body, &sd, colliders, model)
+
 	var shapes []box3d.ShapeID
 	var used []BoneHull
-	attached := 0
-	for _, bh := range skeletal {
-		pts := make([]box3d.Vec3, len(bh.Points))
-		for j, v := range bh.Points {
-			mv := rl.Vector3Transform(rl.Vector3{X: v.X, Y: v.Y, Z: v.Z}, model.Transform)
-			pts[j] = box3d.Vec3{X: mv.X, Y: mv.Y, Z: mv.Z}
+	if len(colliderShapes) == 0 {
+		// Hull fallback for models whose geometry could not be fitted with
+		// primitives (or old content that only supplies BoneHull data).
+		for _, bh := range skeletal {
+			pts := make([]box3d.Vec3, len(bh.Points))
+			for j, v := range bh.Points {
+				mv := rl.Vector3Transform(rl.Vector3{X: v.X, Y: v.Y, Z: v.Z}, model.Transform)
+				pts[j] = box3d.Vec3{X: mv.X, Y: mv.Y, Z: mv.Z}
+			}
+			hull := createLeafHull(pts, 40)
+			if hull == nil {
+				continue
+			}
+			sid := body.CreateHullShape(&sd, hull)
+			if sid.IsNull() {
+				continue
+			}
+			// Keep the hull list and shape list in lockstep: the hull updater
+			// matches them by index.
+			shapes = append(shapes, sid)
+			used = append(used, bh)
 		}
-		hull := createLeafHull(pts, 40)
-		if hull == nil {
-			continue
-		}
-		sid := body.CreateHullShape(&sd, hull)
-		if sid.IsNull() {
-			continue
-		}
-		// Keep the hull list and shape list in lockstep: updateSkeletalCollisions
-		// matches them by index and silently stops updating when the lengths
-		// differ.
-		shapes = append(shapes, sid)
-		used = append(used, bh)
-		attached++
 	}
-	if attached == 0 {
+	if len(colliderShapes) == 0 && len(shapes) == 0 {
 		h := box3d.MakeBoxHull(half.X, half.Y, half.Z)
 		body.CreateHullShape(&sd, &h.Base)
 		// No per-bone shapes to drive; keep the lists empty so the skeletal
@@ -697,6 +737,7 @@ func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, hal
 		SpawnedAt: g.time,
 		Model:     model, HasModel: hasModel,
 		Skeletal: used, SkeletalShapes: shapes,
+		SkeletalColliders: usedColliders, SkeletalColliderShapes: colliderShapes,
 	}
 	g.registerEntity(e)
 	return e
@@ -779,7 +820,7 @@ func (g *Game) spawnPreset(p ShapePreset, pos box3d.Pos, rot box3d.Quat, c rl.Co
 	switch p.Kind {
 	case PropBox:
 		if len(p.Skeletal) > 0 {
-			e := g.addSkeletalEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Skeletal, p.Model, p.HasModel)
+			e := g.addSkeletalEntity(false, pos, rot, p.Half, c, p.Name, p.Density, p.Friction, p.Restitution, p.Skeletal, p.SkeletalColliders, p.Model, p.HasModel)
 			applyPresetAnimations(e, p)
 			return e
 		}

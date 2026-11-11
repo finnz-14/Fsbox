@@ -227,6 +227,10 @@ func (g *Game) drawEntityShape(e *Entity, p rl.Vector3, q box3d.Quat, c, edge rl
 		// mesh vertex buffers, so doing this earlier would let the last entity
 		// overwrite every other instance of the same model.
 		applyEntityPose(e)
+		// Move this entity's collision proxies to the pose we just applied.
+		// Doing it here means the animation is evaluated once per frame rather
+		// than once for physics and again for rendering.
+		g.updateSkeletalCollisionForEntity(e, false)
 		// Rasterise every model, not only animated ones. Bind-pose models still
 		// need to occlude billboard text, and their physics hulls may not match
 		// the rendered mesh closely enough for a ray test.

@@ -52,7 +52,7 @@ func TestSkeletalMotionLocks(t *testing.T) {
 			g := newHeadlessGame(t)
 			e := g.addSkeletalEntity(false, bp(0, 2, 0), box3d.QuatIdentity,
 				bv(0.25, 0.9, 0.15), colWhite(), "TestJenny", 150, 0.6, 0.03,
-				syntheticSkeleton(0), rl.Model{Transform: rl.MatrixIdentity()}, true)
+				syntheticSkeleton(0), nil, rl.Model{Transform: rl.MatrixIdentity()}, true)
 			if e == nil {
 				t.Fatal("spawn failed")
 			}
@@ -97,6 +97,54 @@ func TestSkeletalMotionLocks(t *testing.T) {
 				t.Fatalf("body tilted %.1f deg despite angular locks", maxTilt)
 			}
 		})
+	}
+}
+
+// TestSkeletalPrimitiveColliders verifies the fast path: bind-pose hulls are
+// fitted to capsule/sphere proxies, those proxies are attached to the body,
+// and the body stays upright while they are moved by the animation pose.
+func TestSkeletalPrimitiveColliders(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	g := newHeadlessGame(t)
+	hulls := syntheticSkeleton(0)
+	colliders := buildBoneColliders(hulls)
+	if len(colliders) == 0 {
+		t.Fatal("buildBoneColliders returned no colliders")
+	}
+	e := g.addSkeletalEntity(false, bp(0, 2, 0), box3d.QuatIdentity,
+		bv(0.25, 0.9, 0.15), colWhite(), "TestPrimitives", 150, 0.6, 0.03,
+		hulls, colliders, rl.Model{Transform: rl.MatrixIdentity()}, true)
+	if e == nil {
+		t.Fatal("spawn failed")
+	}
+	if len(e.SkeletalColliderShapes) == 0 {
+		t.Fatal("no primitive shapes were created")
+	}
+	if len(e.SkeletalColliderShapes) != len(e.SkeletalColliders) {
+		t.Fatalf("collider/shape mismatch: %d/%d", len(e.SkeletalColliders), len(e.SkeletalColliderShapes))
+	}
+	if len(e.SkeletalShapes) != 0 {
+		t.Fatalf("primitive path should not create hull shapes, got %d", len(e.SkeletalShapes))
+	}
+
+	e.Body.SetGravityScale(1)
+	e.Body.SetMotionLocks(box3d.MotionLocks{AngularX: true, AngularY: true, AngularZ: true})
+	e.AnimActive = true
+
+	var maxTilt float64
+	for i := 0; i < 600; i++ {
+		g.tick(1.0 / 120.0)
+		g.updateSkeletalCollisions()
+		up := upOf(e.Body.GetRotation())
+		tilt := float64(math.Acos(float64(clampf(up.Y, -1, 1)))) * 180 / math.Pi
+		if tilt > maxTilt {
+			maxTilt = tilt
+		}
+	}
+	t.Logf("max tilt: %.2f deg, colliders=%d", maxTilt, len(e.SkeletalColliders))
+	if maxTilt > 10 {
+		t.Fatalf("body tilted %.1f deg despite angular locks", maxTilt)
 	}
 }
 
