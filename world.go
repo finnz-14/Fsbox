@@ -284,6 +284,12 @@ type Entity struct {
 	SkeletalColliderShapes []box3d.ShapeID
 	SkeletalTick           int
 	skeletalScratch        []box3d.Vec3
+	// skeletalHullLast caches the last transformed hull points per hull bone,
+	// so we can skip shape.SetHull when the pose hasn't meaningfully changed.
+	// SetHull resets broadphase proxies and wakes bodies, so skipping it when
+	// unnecessary avoids per-frame broadphase churn that causes FPS drops and
+	// 1% low spikes.
+	skeletalHullLast [][]box3d.Vec3
 
 	// Model animations (glTF, etc.). Loaded alongside the model; per-entity
 	// playback state lives here so multiple instances of the same model can
@@ -745,6 +751,7 @@ func (g *Game) addSkeletalEntity(static bool, pos box3d.Pos, rot box3d.Quat, hal
 		Model:     model, HasModel: hasModel,
 		Skeletal: append(used, hullBones...), SkeletalShapes: append(shapes, hullShapes...),
 		SkeletalColliders: primColliders, SkeletalColliderShapes: primShapes,
+		skeletalHullLast: make([][]box3d.Vec3, len(append(shapes, hullShapes...))),
 	}
 	g.registerEntity(e)
 	return e

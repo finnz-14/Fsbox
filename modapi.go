@@ -2147,6 +2147,7 @@ func (g *Game) ModCall(owner, cmd string, args json.RawMessage) (any, error) {
 		e.SkeletalColliders = nil
 		e.SkeletalTick = 0
 		e.skeletalScratch = nil
+		e.skeletalHullLast = nil
 
 		if hadSkeletal {
 			sd := box3d.DefaultShapeDef()

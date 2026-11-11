@@ -336,6 +336,7 @@ func (g *Game) updatePrimitiveColliders(e *Entity, force bool) {
 	}
 	modelTransform := e.Model.Transform
 
+	changed := false
 	for i := range e.SkeletalColliders {
 		c := &e.SkeletalColliders[i]
 		if c.UseHull {
@@ -362,6 +363,7 @@ func (g *Game) updatePrimitiveColliders(e *Entity, force bool) {
 			c.lastC = center
 			c.lastR = radius
 			c.hasLast = true
+			changed = true
 			continue
 		}
 
@@ -376,9 +378,12 @@ func (g *Game) updatePrimitiveColliders(e *Entity, force bool) {
 		c.lastB = b
 		c.lastR = radius
 		c.hasLast = true
+		changed = true
 	}
 
-	reapplyMotionLocks(e)
+	if changed {
+		reapplyMotionLocks(e)
+	}
 }
 
 func (g *Game) updateHullColliders(e *Entity, force bool) {
@@ -400,6 +405,7 @@ func (g *Game) updateHullColliders(e *Entity, force bool) {
 	}
 	modelTransform := e.Model.Transform
 
+	changed := false
 	for i, bh := range e.Skeletal {
 		shape := e.SkeletalShapes[i]
 		if shape.IsNull() {
@@ -417,13 +423,40 @@ func (g *Game) updateHullColliders(e *Entity, force bool) {
 		for j, v := range bh.Points {
 			pts[j] = transformBonePoint(v, bone, modelTransform)
 		}
+
+		// Skip SetHull when the transformed points haven't moved meaningfully.
+		// SetHull resets broadphase proxies and wakes bodies, so calling it
+		// every frame causes continuous broadphase churn (FPS drops + 1% lows).
+		var last []box3d.Vec3
+		if i < len(e.skeletalHullLast) {
+			last = e.skeletalHullLast[i]
+		}
+		if len(last) == len(pts) {
+			same := true
+			for j, p := range pts {
+				if absf(p.X-last[j].X) > 0.002 || absf(p.Y-last[j].Y) > 0.002 || absf(p.Z-last[j].Z) > 0.002 {
+					same = false
+					break
+				}
+			}
+			if same {
+				continue
+			}
+			copy(last, pts)
+		} else if i < len(e.skeletalHullLast) {
+			e.skeletalHullLast[i] = append([]box3d.Vec3{}, pts...)
+		}
+
 		hull := createLeafHull(pts, 40)
 		if hull != nil {
 			shape.SetHull(hull)
+			changed = true
 		}
 	}
 
-	reapplyMotionLocks(e)
+	if changed {
+		reapplyMotionLocks(e)
+	}
 }
 
 // skeletalUpdateDue throttles collision shape updates by distance. Distant
