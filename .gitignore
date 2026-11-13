@@ -6,6 +6,5 @@ fsbox_save.json
 preview.png
 tmp_spawn.png
 rsrc.syso
-Mods/
-ModsGo/*/bin/worker.exe
+Addons/
 .merged_content/

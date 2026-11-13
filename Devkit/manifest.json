@@ -4,8 +4,6 @@
   "version": "1.0.0",
   "author": "Your Name",
   "description": "Starter mod created from the FSBox DevKit",
-  "runtime": "wasm",
   "entry": "main.wasm",
-  "game_version": ">=1.0.0",
   "dependencies": []
 }

@@ -230,6 +230,7 @@ footer{text-align:center;padding:26px;color:var(--muted);font-size:12px;border-t
 <button class="tabbtn" onclick="showTab('billboards')">Billboards</button>
 <button class="tabbtn" onclick="showTab('audio')">Audio</button>
 <button class="tabbtn" onclick="showTab('input')">Input</button>
+<button class="tabbtn" onclick="showTab('networking')">Networking</button>
 <button class="tabbtn" onclick="showTab('config')">Config</button>
 <button class="tabbtn" onclick="showTab('models')">Models &amp; Shaders</button>
 <button class="tabbtn" onclick="showTab('content')">Content &amp; Resources</button>
@@ -1040,6 +1041,78 @@ rel, <span class="s-k">_</span> := <span class="s-f">fsbox.InputMouseButtonRelea
 wheel, <span class="s-k">_</span> := <span class="s-f">fsbox.InputWheel</span>()
 
 <span class="s-k">if</span> pressed { <span class="s-f">fsbox.Log</span>(<span class="s-s">"E pressed"</span>) }</code></pre>
+</div>
+</div>
+
+<div id="networking" class="tab">
+<h2>Networking</h2>
+<p>The dedicated server is authoritative. Mods run on the server and can inspect the roster, message clients, and forward custom events. On a connected client the same helpers expose the local view and let client mods send events to the server. In single-player <code class="inline">NetStatus().Mode</code> is <code class="inline">"off"</code>.</p>
+<table class="api">
+<tr><th>API</th><th>Signature</th><th>Use case</th></tr>
+<tr><td><code class="inline">NetStatus()</code></td><td><code class="inline-cell">NetStatus() (NetStatusInfo, error)</code></td><td>Role, port/address, map, player count and server tick.</td></tr>
+<tr><td><code class="inline">NetPlayers()</code></td><td><code class="inline-cell">NetPlayers() ([]NetPlayerInfo, error)</code></td><td>Roster with positions, look angles, fly state and held prop ID.</td></tr>
+<tr><td><code class="inline">BroadcastToast(text, color)</code></td><td><code class="inline-cell">BroadcastToast(string, *Color) error</code></td><td>Show a HUD toast on every client. Server only.</td></tr>
+<tr><td><code class="inline">SendNetEvent(event, data)</code></td><td><code class="inline-cell">SendNetEvent(string, any) error</code></td><td>Send a custom event to mods on the other side of the link.</td></tr>
+<tr><td><code class="inline">KickPlayer(id, reason)</code></td><td><code class="inline-cell">KickPlayer(int32, string) (bool, error)</code></td><td>Disconnect one client. Server only.</td></tr>
+</table>
+
+<h3>NetStatusInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> NetStatusInfo <span class="s-k">struct</span> {
+    Mode       <span class="s-t">string</span> <span class="s-c">// "off", "server" or "client"</span>
+    Server     <span class="s-k">bool</span>
+    Connected  <span class="s-k">bool</span>
+    Address    <span class="s-t">string</span> <span class="s-c">// client: remote host:port</span>
+    Port       <span class="s-t">int</span>    <span class="s-c">// server: listen port</span>
+    Map        <span class="s-t">string</span>
+    Players    <span class="s-t">int</span>
+    PlayerID   <span class="s-t">int32</span>
+    PlayerName <span class="s-t">string</span>
+    Tick       <span class="s-t">uint64</span> <span class="s-c">// server simulation tick</span>
+    Protocol   <span class="s-t">int</span>
+}</code></pre>
+
+<h3>NetPlayerInfo</h3>
+<pre class="code-block"><code class="language-go"><span class="s-k">type</span> NetPlayerInfo <span class="s-k">struct</span> {
+    ID       <span class="s-t">int32</span>
+    Name     <span class="s-t">string</span>
+    Position <span class="s-t">Vec3</span>
+    Yaw      <span class="s-t">float32</span>
+    Pitch    <span class="s-t">float32</span>
+    Fly      <span class="s-k">bool</span>
+    Held     <span class="s-t">int32</span> <span class="s-c">// prop network ID, or 0</span>
+    Local    <span class="s-k">bool</span>  <span class="s-c">// true for the client's own entry</span>
+}</code></pre>
+
+<div class="callout warn">
+BroadcastToast and KickPlayer only work on a dedicated server. SendNetEvent works in both directions: a server mod broadcasts to all clients, a client mod sends to the server. Clients receive events through their normal event handler.
+</div>
+
+<div class="example">
+<h3>Examples</h3>
+<pre class="code-block"><code class="language-go"><span class="s-c">// Server: welcome players and report the roster</span>
+status, _ := <span class="s-f">fsbox.NetStatus</span>()
+<span class="s-k">if</span> status.Server {
+    <span class="s-f">fsbox.Log</span>(<span class="s-s">"serving "</span> + status.Map + <span class="s-s">" on port "</span> + <span class="s-f">fmt.Sprint</span>(status.Port))
+    players, _ := <span class="s-f">fsbox.NetPlayers</span>()
+    <span class="s-k">for</span> _, p := <span class="s-k">range</span> players {
+        <span class="s-f">fsbox.Log</span>(<span class="s-s">"player "</span> + p.Name)
+    }
+    <span class="s-k">_</span> = <span class="s-f">fsbox.BroadcastToast</span>(<span class="s-s">"WELCOME TO THE SERVER"</span>, <span class="s-k">nil</span>)
+}
+
+<span class="s-c">// Server: notify every client that a round started</span>
+<span class="s-k">_</span> = <span class="s-f">fsbox.SendNetEvent</span>(<span class="s-s">"round.start"</span>, <span class="s-k">map</span>[<span class="s-t">string</span>]<span class="s-k">any</span>{
+    <span class="s-s">"round"</span>: <span class="s-n">3</span>,
+    <span class="s-s">"mode"</span>:  <span class="s-s">"survival"</span>,
+})
+
+<span class="s-c">// Client: send an event to the server mods</span>
+<span class="s-k">_</span> = <span class="s-f">fsbox.SendNetEvent</span>(<span class="s-s">"client.ready"</span>, <span class="s-k">nil</span>)
+
+<span class="s-c">// Server: remove a disruptive client</span>
+<span class="s-k">if</span> ok, err := <span class="s-f">fsbox.KickPlayer</span>(<span class="s-n">4</span>, <span class="s-s">"idle too long"</span>); err == <span class="s-k">nil</span> && ok {
+    <span class="s-f">fsbox.Log</span>(<span class="s-s">"kicked"</span>)
+}</code></pre>
 </div>
 </div>
 

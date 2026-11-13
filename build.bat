@@ -13,8 +13,10 @@ if defined TAGS (
 go build %TAGS% -o fsbox.exe .
 if errorlevel 1 (
     echo Game build failed
+    pause
     exit /b 1
 )
 
 echo Build complete: fsbox.exe
 endlocal
+pause

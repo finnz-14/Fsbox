@@ -52,6 +52,50 @@ Run the automated tests:
 go test ./...
 ```
 
+## Multiplayer
+
+Fsbox has an authoritative dedicated server. The server and client share one
+binary; the server runs headless with a hidden GL context so content and mods
+still load.
+
+Build the dedicated server into `server\`:
+
+```powershell
+server\build.bat
+server\fsbox-server.exe -server -port 27015 -map default
+```
+
+Use `server\build.bat release` to exclude smoke-test code. Run the server from
+the repository root so it can load `Mods\` and write its files next to the game.
+
+Join from the game with **MULTIPLAYER** on the main menu, or connect directly:
+
+```powershell
+fsbox.exe -connect 127.0.0.1:27015 -name PLAYER
+```
+
+Flags:
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-server` | off | Run the authoritative headless server. |
+| `-port` | `27015` | TCP port for the dedicated server. |
+| `-connect host[:port]` | off | Join a server at this address. |
+| `-name` | `PLAYER` | Callsign shown to other players. |
+| `-map` | current map | Start a map directly. |
+
+The server simulates at 60 Hz and broadcasts snapshots at 20 Hz. Clients send
+input and intents (grab, spawn, delete, tools); the server validates and applies
+them. The pause menu has a **DISCONNECT** action while connected. Single-player
+behaviour is unchanged.
+
+### Multiplayer mod API
+
+Mods run on the server. The SDK exposes `NetStatus`, `NetPlayers`,
+`BroadcastToast`, `SendNetEvent` and `KickPlayer`. Server mods can broadcast
+custom events to client mods, and client mods can send events back to the server.
+See the **Networking** tab in `Devkit\docs.html` for signatures and examples.
+
 ## Controls
 
 | Input | Action |
@@ -104,8 +148,9 @@ anchoring matter no longer depends on a right-click or a specific tool mode.
 
 ## Spawn menu
 
-Press **Q** or **Tab** to freeze the simulation and open the spawn interface.
-It follows the structure of a GMod-style browser:
+Press **Q** or **Tab** to open the spawn interface. The world keeps simulating
+while the overlay is open; only the pause menu stops it. It follows the
+structure of a GMod-style browser:
 
 - Left rail: category filter for the current tab, plus a live prop-capacity bar.
 - Header tabs: **SPAWN**, **TOOLS**, and **WORLD**.
@@ -197,21 +242,59 @@ console with a `[content]` prefix.
 
 ## Architecture
 
-| File | Responsibility |
+The root keeps only a thin launcher (`main.go`). All game code lives under
+`internal/`, split into packages by responsibility:
+
+```
+main.go                    Thin launcher: calls internal/game.Run()
+internal/game/             The game itself (one package)
+  main.go                  Window setup, game loop, flags, smoke test wiring
+  game.go                  Game state, fixed-step update, input routing, camera, toasts and effects
+  world.go                 Physics world, collision filters, presets, arena, props, actions and queries
+  content.go               Discovers Content/Spawnables, reads manifests and loads model spawnables
+  content_test.go          Content discovery, descriptor and map tests
+  player.go                Dynamic capsule character controller (walk, sprint, jump, fly)
+  tools.go                 Tool gun definitions, tool selection, primary/secondary actions, selector and viewmodel
+  render.go                Sky, arena grid, shadows, entities, sphere spin markings, outlines, ghost, beams, particles and waves
+  ui.go                    Industrial HUD, crosshair, telemetry, tool status, manual, pause overlay and toasts
+  menu.go                  GMod-style spawn browser, world actions and settings panel
+  settings.go              Settings values, persistence, clamping and the gravity tool
+  save.go                  Versioned JSON save/load of dynamic props, frozen state and player pose
+  addons.go                Addon manager: discovery, load/unload, commands, errors and console logging
+  addonanim.go             Addon animation playback driving skeletons
+  addonapi.go              Addon command router (tool.*, net.*, render.*, ...)
+  addonapi_entity.go       Addon entity/tool/weapon APIs and their tests
+  addonapi_extra.go        Addon UI, billboard and particle APIs
+  skeletalcollision.go     Per-bone skeletal collision proxies (spheres, capsules, hulls)
+  visualdepth_entity.go    Rasterises posed models into the visual depth buffer
+  visualdepth_entity_test.go  Visual depth occlusion test with a posed mesh
+  loading.go               Startup loading screen with progress
+  mainmenu.go              Main menu (static background) and multiplayer entry
+  netapi.go                Addon-facing networking status/player APIs
+  net_alias.go             Aliases into internal/netproto so call sites stay short
+  net_client.go            Dedicated-server client: dial, snapshots, prediction
+  net_server.go            Dedicated headless server: authoritative loop and broadcasts
+  netmenu.go               Multiplayer menu with saved server list
+  smoke.go / smoke_release.go  Development-only smoke mode (excluded in release builds)
+  *_test.go                Headless tests for physics, tools, save/load, spawning, gravity, UI filters, networking
+  Content/                 Embedded default spawnables and maps
+internal/netproto/         TCP + JSON wire protocol for dedicated-server multiplayer (types, framing, name sanitize, change detection)
+internal/visualdepth/      Half-resolution software depth buffer for posed skeletal models
+server/                    Dedicated server packaging (server/build.bat, README)
+Addons/                    Addon packages (gitignored; not committed)
+Devkit/                    SDK and docs for addon authors
+```
+
+| Package | Responsibility |
 | --- | --- |
-| `main.go` | Window setup, game loop, flags, smoke test and screenshot analysis |
-| `game.go` | Game state, fixed-step update, input routing, camera, toasts and effects |
-| `world.go` | Physics world, collision filters, presets, arena, props, actions and queries |
-| `content.go` | Discovers `Content/Spawnables`, reads manifests and loads model spawnables |
-| `player.go` | Dynamic capsule character controller (walk, sprint, jump, fly) |
-| `tools.go` | Tool gun definitions, tool selection, primary/secondary actions, selector and viewmodel |
-| `render.go` | Sky, arena grid, shadows, entities, sphere spin markings, outlines, ghost, beams, particles and waves |
-| `ui.go` | Industrial HUD, crosshair, telemetry, tool status, manual, pause overlay and toasts |
-| `menu.go` | GMod-style spawn browser, world actions and settings panel |
-| `settings.go` | Settings values, persistence, clamping and the gravity tool |
-| `save.go` | Versioned JSON save/load of dynamic props, frozen state and player pose |
-| `game_test.go` | Headless tests for physics, tools, save/load, spawning, gravity and UI filters |
-| `build.bat` | Windows build helper that produces `fsbox.exe` |
+| `main` | Thin launcher only; exits with the game's return code |
+| `internal/game` | Everything game-side: simulation, rendering, UI, addons, networking glue |
+| `internal/netproto` | Wire protocol types and helpers, free of game state, unit-testable |
+| `internal/visualdepth` | Visual depth buffer used for billboard text occlusion, unit-tested |
+
+Windows build helpers: `build.bat` produces `fsbox.exe` at the root, and
+`server/build.bat` produces `server/fsbox-server.exe` (run with no flags to
+start an authoritative headless server).
 
 The arena is rebuilt on every load; only dynamic props, their frozen state, and
 the player pose are stored in `fsbox_save.json` (created the first time you

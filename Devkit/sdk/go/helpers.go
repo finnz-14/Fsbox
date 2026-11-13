@@ -438,6 +438,14 @@ func RemoveBillboardPanel(panelID int32) error {
 	return err
 }
 
+// SetBillboardTools restricts which tools may click a panel. Pass nil or an
+// empty slice to allow every tool. Tool IDs are 0.. for built-in tools and
+// 1000+ for mod-registered tools (see ToolInfo is not needed; use the ID
+// returned by RegisterTool plus 1000).
+func SetBillboardTools(panelID int32, tools []string) error {
+	return callInto("ui.billboard_set_tools", map[string]any{"panel": panelID, "tools": tools}, nil)
+}
+
 // MoveBillboardPanel repositions an existing panel in world space. Panels
 // always face the camera, so only the centre position is needed.
 func MoveBillboardPanel(panelID int32, x, y, z float32) error {
@@ -563,6 +571,11 @@ func PlayMusic(name string, volume float32) error {
 func StopMusic(name string) error {
 	_, err := Call("audio.stop_music", map[string]any{"name": name})
 	return err
+}
+
+// UnloadAudio frees a sound or music stream previously loaded under name.
+func UnloadAudio(name string) error {
+	return callInto("audio.unload", map[string]any{"name": name}, nil)
 }
 
 func SetMusicVolume(name string, volume float32) error {
@@ -1228,13 +1241,13 @@ type ConstraintDesc struct {
 
 func SetWorldGravityScale(scale float32) (Vec3, error) {
 	var v Vec3
-	err := callInto("physics.set_gravity", map[string]any{"scale": scale}, &v)
+	err := callInto("world.set_gravity", map[string]any{"scale": scale}, &v)
 	return v, err
 }
 
 func SetWorldGravityY(y float32) (Vec3, error) {
 	var v Vec3
-	err := callInto("physics.set_gravity", map[string]any{"y": y}, &v)
+	err := callInto("world.set_gravity", map[string]any{"y": y}, &v)
 	return v, err
 }
 
@@ -1460,6 +1473,7 @@ type ToolInfo struct {
 	SecondaryHook string `json:"secondary_hook"`
 	ReloadHook    string `json:"reload_hook"`
 	Owner         string `json:"owner"`
+	Billboard     bool   `json:"billboard"`
 }
 
 type ToolDesc struct {
@@ -1471,6 +1485,7 @@ type ToolDesc struct {
 	PrimaryHook   string `json:"primary_hook"`
 	SecondaryHook string `json:"secondary_hook"`
 	ReloadHook    string `json:"reload_hook"`
+	Billboard     bool   `json:"billboard"`
 }
 
 func RegisterTool(desc ToolDesc) (int32, error) {
@@ -2055,4 +2070,97 @@ func HealEntity(id int32, amount float32) (float32, error) {
 	var v float32
 	err := callInto("entity.heal", map[string]any{"id": id, "amount": amount}, &v)
 	return v, err
+}
+
+// EntityExists reports whether an entity with the given ID is still in the
+// world. It is a thin wrapper over Entity.Get that returns false instead of
+// an error for missing entities.
+func EntityExists(id int32) (bool, error) {
+	raw, err := Call("entity.exists", map[string]any{"id": id})
+	if err != nil {
+		return false, err
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return false, nil
+	}
+	return true, nil
+}
+
+// FreezeEntity sets the frozen state of one prop. Passing true freezes it in
+// place; false releases it back to physics.
+func FreezeEntity(id int32, frozen bool) error {
+	return callInto("entity.set_frozen", map[string]any{"id": id, "frozen": frozen}, nil)
+}
+
+// ---------------------------------------------------------------------------
+// Networking (dedicated server / connected client)
+// ---------------------------------------------------------------------------
+
+// NetStatusInfo describes this process's multiplayer role. Mode is "off",
+// "server" or "client". On a dedicated server Port, Players and Tick are
+// populated; on a client Address, PlayerID and PlayerName are populated.
+type NetStatusInfo struct {
+	Mode       string `json:"mode"`
+	Server     bool   `json:"server"`
+	Connected  bool   `json:"connected"`
+	Address    string `json:"address,omitempty"`
+	Port       int    `json:"port,omitempty"`
+	Map        string `json:"map"`
+	Players    int    `json:"players"`
+	PlayerID   int32  `json:"player_id,omitempty"`
+	PlayerName string `json:"player_name,omitempty"`
+	Tick       uint64 `json:"tick,omitempty"`
+	Protocol   int    `json:"protocol"`
+}
+
+// NetPlayerInfo is one connected player. Position is authoritative on the
+// server and interpolated on a client. Held is the prop network ID or 0.
+type NetPlayerInfo struct {
+	ID       int32   `json:"id"`
+	Name     string  `json:"name"`
+	Position Vec3    `json:"position"`
+	Yaw      float32 `json:"yaw"`
+	Pitch    float32 `json:"pitch"`
+	Fly      bool    `json:"fly"`
+	Held     int32   `json:"held"`
+	Local    bool    `json:"local"`
+}
+
+// NetStatus returns the current multiplayer status. Safe in single-player.
+func NetStatus() (NetStatusInfo, error) {
+	var info NetStatusInfo
+	err := callInto("net.status", nil, &info)
+	return info, err
+}
+
+// NetPlayers lists every connected player. On a client the local player is
+// included first with Local set to true.
+func NetPlayers() ([]NetPlayerInfo, error) {
+	var out []NetPlayerInfo
+	err := callInto("net.players", nil, &out)
+	return out, err
+}
+
+// BroadcastToast shows a toast on every connected client's HUD. Only valid on
+// a dedicated server. Pass nil for the default accent colour.
+func BroadcastToast(text string, color *Color) error {
+	args := map[string]any{"text": text}
+	if color != nil {
+		args["color"] = *color
+	}
+	return callInto("net.broadcast_toast", args, nil)
+}
+
+// SendNetEvent delivers a custom event to mods on the other side of the link.
+// On a server it broadcasts to all clients; on a client it sends to the server.
+func SendNetEvent(event string, data any) error {
+	return callInto("net.send_event", map[string]any{"event": event, "data": data}, nil)
+}
+
+// KickPlayer disconnects one client. Only valid on a dedicated server. Returns
+// false when no client with that ID is connected.
+func KickPlayer(id int32, reason string) (bool, error) {
+	var ok bool
+	err := callInto("net.kick", map[string]any{"id": id, "reason": reason}, &ok)
+	return ok, err
 }
